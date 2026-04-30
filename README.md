@@ -1,5 +1,8 @@
 # c_web
 
+[![backend](https://github.com/wangchaozhi/brogon-admin/actions/workflows/backend.yml/badge.svg)](https://github.com/wangchaozhi/brogon-admin/actions/workflows/backend.yml)
+[![frontend](https://github.com/wangchaozhi/brogon-admin/actions/workflows/frontend.yml/badge.svg)](https://github.com/wangchaozhi/brogon-admin/actions/workflows/frontend.yml)
+
 基于 **Drogon** 的模块化 C++ Web 服务骨架 + **React 19 + Ant Design 6** 前端，Windows + MSVC + vcpkg 构建。
 
 ## 目录结构

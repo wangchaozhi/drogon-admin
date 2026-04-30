@@ -1,0 +1,82 @@
+name: backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "CMakeLists.txt"
+      - "vcpkg.json"
+      - "config/**"
+      - "sql/**"
+      - ".github/workflows/backend.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "CMakeLists.txt"
+      - "vcpkg.json"
+      - "config/**"
+      - "sql/**"
+      - ".github/workflows/backend.yml"
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Windows MSVC + vcpkg
+    runs-on: windows-2022
+
+    env:
+      # 使用 GitHub Actions 自带缓存作为 vcpkg 二进制缓存，避免每次重编 Drogon
+      VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+      VCPKG_DEFAULT_TRIPLET: x64-windows
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Export GitHub Actions cache env for vcpkg
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Setup MSVC dev environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Bootstrap vcpkg (pinned to builtin-baseline)
+        shell: pwsh
+        run: |
+          $baseline = (Get-Content vcpkg.json -Raw | ConvertFrom-Json).'builtin-baseline'
+          if (-not $baseline) { throw 'vcpkg.json missing builtin-baseline' }
+          Write-Host "Using vcpkg baseline: $baseline"
+          git clone https://github.com/microsoft/vcpkg.git "$env:RUNNER_TEMP\vcpkg"
+          git -C "$env:RUNNER_TEMP\vcpkg" checkout $baseline
+          & "$env:RUNNER_TEMP\vcpkg\bootstrap-vcpkg.bat" -disableMetrics
+          "VCPKG_ROOT=$env:RUNNER_TEMP\vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "$env:RUNNER_TEMP\vcpkg"            | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: CMake configure
+        shell: cmd
+        run: |
+          cmake -B build -S . -A x64 ^
+            -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake ^
+            -DVCPKG_TARGET_TRIPLET=x64-windows
+
+      - name: CMake build (Release)
+        shell: cmd
+        run: cmake --build build --config Release -j
+
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: c_web-windows-x64
+          path: |
+            build/Release/c_web.exe
+            build/Release/config/**
+            build/Release/sql/**
+          if-no-files-found: error
+          retention-days: 7
