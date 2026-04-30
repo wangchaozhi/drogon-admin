@@ -17,6 +17,10 @@ jobs:
   build:
     name: Lint & Build (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
+    env:
+      # 让 actions/checkout、actions/setup-node 等 JS Action 强制运行在 Node 24 上，
+      # 消除 GitHub 关于 Node 20 Actions 的弃用警告。
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     defaults:
       run:
         working-directory: front
