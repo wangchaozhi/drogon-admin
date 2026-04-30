@@ -20,7 +20,7 @@ export default function AppHeader({ user, onLogout }: Props) {
         level={isMobile ? 5 : 4}
         style={{ margin: 0, whiteSpace: 'nowrap' }}
       >
-        c_web {isMobile ? '' : '控制台'}
+        drogon-admin {isMobile ? '' : '控制台'}
       </Title>
 
       <Space size={isMobile ? 8 : 16}>

@@ -40,7 +40,7 @@ export default function AdminLayout() {
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div className="admin-brand">
         <span className="admin-brand-dot" />
-        {!collapsed && <span className="admin-brand-text">c_web</span>}
+        {!collapsed && <span className="admin-brand-text">drogon-admin</span>}
       </div>
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <DynamicMenu menus={menus} mode="inline" theme="dark" inlineCollapsed={!isMobile && collapsed} />

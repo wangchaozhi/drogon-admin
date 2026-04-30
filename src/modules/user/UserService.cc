@@ -20,7 +20,7 @@ std::pair<std::string, int> jwtConfig() {
 
 std::string superAdminEmail() {
     auto* cfg = drogon::app().getPlugin<plugins::ConfigPlugin>();
-    return cfg ? cfg->superAdminEmail() : std::string("admin@c_web.local");
+    return cfg ? cfg->superAdminEmail() : std::string("admin@drogon-admin.local");
 }
 
 // 注册成功后自动绑定角色（协程版）：

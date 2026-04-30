@@ -84,8 +84,8 @@ jobs:
           - name: Windows MSVC (x64, static-md)
             os: windows-2022
             triplet: x64-windows-static-md
-            artifact: c_web-windows-x64
-            exe_path: build/Release/c_web.exe
+            artifact: drogon-admin-windows-x64
+            exe_path: build/Release/drogon-admin.exe
             cfg_path: build/Release/config
             sql_path: build/Release/sql
             asset_suffix: windows-x64.zip
@@ -93,8 +93,8 @@ jobs:
           - name: Ubuntu 22.04 GCC (x64)
             os: ubuntu-22.04
             triplet: x64-linux
-            artifact: c_web-ubuntu22-x64
-            exe_path: build/c_web
+            artifact: drogon-admin-ubuntu22-x64
+            exe_path: build/drogon-admin
             cfg_path: build/config
             sql_path: build/sql
             asset_suffix: ubuntu22-x64.tar.gz
@@ -102,8 +102,8 @@ jobs:
           - name: macOS Latest Clang (arm64) [experimental]
             os: macos-latest
             triplet: arm64-osx
-            artifact: c_web-macos-arm64
-            exe_path: build/c_web
+            artifact: drogon-admin-macos-arm64
+            exe_path: build/drogon-admin
             cfg_path: build/config
             sql_path: build/sql
             asset_suffix: macos-arm64.tar.gz
@@ -237,7 +237,7 @@ jobs:
         if: runner.os == 'Windows' && (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.tag != ''))
         shell: pwsh
         run: |
-          $asset = "c_web-$env:RELEASE_TAG-${{ matrix.asset_suffix }}"
+          $asset = "drogon-admin-$env:RELEASE_TAG-${{ matrix.asset_suffix }}"
           $staging = "release-stage"
           New-Item -ItemType Directory -Force -Path $staging | Out-Null
           Copy-Item "${{ matrix.exe_path }}" "$staging/"
@@ -250,7 +250,7 @@ jobs:
         if: runner.os != 'Windows' && (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.tag != ''))
         shell: bash
         run: |
-          asset="c_web-${RELEASE_TAG}-${{ matrix.asset_suffix }}"
+          asset="drogon-admin-${RELEASE_TAG}-${{ matrix.asset_suffix }}"
           staging="release-stage"
           mkdir -p "$staging"
           cp "${{ matrix.exe_path }}" "$staging/"

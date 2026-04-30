@@ -19,7 +19,7 @@ namespace common {
 class CryptoUtil {
 public:
     // 固定盐，避免简单彩虹表；生产应为每用户独立盐
-    static constexpr const char* kPasswordSalt = "c_web_salt_v1";
+    static constexpr const char* kPasswordSalt = "drogon_admin_salt_v1";
 
     // -- base64 url-safe encode / decode ------------------------------------
     static std::string base64UrlEncode(const void* data, size_t len) {

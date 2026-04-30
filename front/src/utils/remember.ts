@@ -2,7 +2,7 @@
 // 注意：密码明文存 localStorage 仅为用户体验，存在 XSS 风险，生产环境建议改为仅记住邮箱。
 // 这里用 base64 做最基本的肉眼不可读处理（非加密）。
 
-const KEY = 'c_web_remembered_credential'
+const KEY = 'drogon_admin_remembered_credential'
 
 export type RememberedCredential = {
   email: string

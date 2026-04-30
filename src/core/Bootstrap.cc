@@ -169,7 +169,7 @@ private:
 // 让日志同时输出到控制台与文件（双路均为异步）
 static void setupDualLogging() {
     auto& fileLogger = getAsyncFileLogger();
-    fileLogger.setFileName("c_web", ".log", "./logs");
+    fileLogger.setFileName("drogon-admin", ".log", "./logs");
     fileLogger.setFileSizeLimit(100 * 1000 * 1000);
     fileLogger.startLogging();
 
@@ -209,7 +209,7 @@ void Bootstrap::init(const std::string& configPath) {
     // 启动 banner
     app.registerBeginningAdvice([]() {
         APP_LOG_INFO << "============================================";
-        APP_LOG_INFO << "  c_web started (Drogon + SQLite modular)";
+        APP_LOG_INFO << "  drogon-admin started (Drogon + SQLite modular)";
         APP_LOG_INFO << "============================================";
     });
 }

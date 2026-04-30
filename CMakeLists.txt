@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(c_web CXX)
+project(drogon-admin CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -20,7 +20,7 @@ file(GLOB_RECURSE FILTER_SRC   CONFIGURE_DEPENDS src/filters/*.cc src/filters/*.
 file(GLOB_RECURSE PLUGIN_SRC   CONFIGURE_DEPENDS src/plugins/*.cc src/plugins/*.cpp)
 file(GLOB_RECURSE MODULES_SRC  CONFIGURE_DEPENDS src/modules/*.cc src/modules/*.cpp)
 
-add_executable(c_web
+add_executable(drogon-admin
     src/main.cc
     ${CORE_SRC}
     ${COMMON_SRC}
@@ -29,17 +29,17 @@ add_executable(c_web
     ${MODULES_SRC}
 )
 
-target_include_directories(c_web PRIVATE src)
-target_link_libraries(c_web PRIVATE Drogon::Drogon OpenSSL::SSL OpenSSL::Crypto)
+target_include_directories(drogon-admin PRIVATE src)
+target_link_libraries(drogon-admin PRIVATE Drogon::Drogon OpenSSL::SSL OpenSSL::Crypto)
 
 # 拷贝运行配置到输出目录，方便 run-in-place
-add_custom_command(TARGET c_web POST_BUILD
+add_custom_command(TARGET drogon-admin POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/config
-            $<TARGET_FILE_DIR:c_web>/config
+            $<TARGET_FILE_DIR:drogon-admin>/config
     COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/sql
-            $<TARGET_FILE_DIR:c_web>/sql
+            $<TARGET_FILE_DIR:drogon-admin>/sql
     COMMAND ${CMAKE_COMMAND} -E make_directory
-            $<TARGET_FILE_DIR:c_web>/data
+            $<TARGET_FILE_DIR:drogon-admin>/data
 )

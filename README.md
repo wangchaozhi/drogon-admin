@@ -1,4 +1,4 @@
-# c_web
+# drogon-admin
 
 [![backend](https://github.com/wangchaozhi/drogon-admin/actions/workflows/backend.yml/badge.svg)](https://github.com/wangchaozhi/drogon-admin/actions/workflows/backend.yml)
 [![frontend](https://github.com/wangchaozhi/drogon-admin/actions/workflows/frontend.yml/badge.svg)](https://github.com/wangchaozhi/drogon-admin/actions/workflows/frontend.yml)
@@ -10,10 +10,10 @@
 - **手动构建**：main 分支上不再自动触发构建。可在 GitHub Actions 页面点击 `Run workflow` 手动触发 `backend` / `frontend` 流水线。
 - **PR 质量门**：面向 main 的 Pull Request 仍会自动执行构建以验证改动。
 - **自动发版**：推送形如 `v*`（如 `v0.1.0`、`v1.2.3-rc1`）的 tag 时，`backend` 会构建三平台 Release 产物（Windows static-md / Ubuntu 22.04 / macOS arm64），`frontend` 会构建 `dist`，分别打包后自动上传到同名 tag 的 GitHub Release：
-  - `c_web-<tag>-windows-x64.zip`
-  - `c_web-<tag>-ubuntu22-x64.tar.gz`
-  - `c_web-<tag>-macos-arm64.tar.gz`（experimental）
-  - `c_web-front-<tag>.zip`
+  - `drogon-admin-<tag>-windows-x64.zip`
+  - `drogon-admin-<tag>-ubuntu22-x64.tar.gz`
+  - `drogon-admin-<tag>-macos-arm64.tar.gz`（experimental）
+  - `drogon-admin-front-<tag>.zip`
   - 带 `-` 的 tag（如 `v1.0.0-rc1`）会被标记为 pre-release。
 
 发一次版示例：
@@ -26,7 +26,7 @@ git push origin v0.1.0
 ## 目录结构
 
 ```
-c_web/
+drogon-admin/
 ├── src/                        # 后端 C++ 源码
 │   ├── main.cc                 # 入口，薄薄一层
 │   ├── core/                   # 框架层：Bootstrap / Result / Logger
@@ -93,15 +93,15 @@ REM 方式 C：使用 Visual Studio 生成器
 build_vs.bat
 ```
 
-构建产物：`build\Release\c_web.exe`，`config\` 会自动拷贝到输出目录旁。
+构建产物：`build\Release\drogon-admin.exe`，`config\` 会自动拷贝到输出目录旁。
 
-> Windows 侧采用 `x64-windows-static-md` triplet：vcpkg 的第三方依赖（Drogon / OpenSSL / jsoncpp / zlib / sqlite3 等）静态链接进 `c_web.exe`，CRT 仍为动态（`/MD`）。因此产物在装有 VC++ Runtime 的 Win10/11 机器上可直接运行，无需随附一堆 DLL。
+> Windows 侧采用 `x64-windows-static-md` triplet：vcpkg 的第三方依赖（Drogon / OpenSSL / jsoncpp / zlib / sqlite3 等）静态链接进 `drogon-admin.exe`，CRT 仍为动态（`/MD`）。因此产物在装有 VC++ Runtime 的 Win10/11 机器上可直接运行，无需随附一堆 DLL。
 
 运行：
 
 ```bat
 cd build\Release
-c_web.exe
+drogon-admin.exe
 ```
 
 ## 前端开发与构建
@@ -187,7 +187,7 @@ ADD_METHOD_TO(UserController::create, "/api/users",
 
 ## 日志
 
-- 双路输出：`trantor::AsyncFileLogger` 写 `logs/c_web.log`（自动按大小切片）+ 自定义 `AsyncConsoleSink` 后台线程刷 `stdout`，业务线程只入队，Windows QuickEdit"选中"阻塞 stdout 时不会拖住 HTTP 线程。
+- 双路输出：`trantor::AsyncFileLogger` 写 `logs/drogon-admin.log`（自动按大小切片）+ 自定义 `AsyncConsoleSink` 后台线程刷 `stdout`，业务线程只入队，Windows QuickEdit"选中"阻塞 stdout 时不会拖住 HTTP 线程。
 - `sql/schema.sql` 的幂等迁移（如 `ALTER TABLE ADD COLUMN` 已存在列）会被降级为 DEBUG，避免 ERROR 噪音。
 
 ## 首个注册用户自动晋升管理员
@@ -205,7 +205,7 @@ ADD_METHOD_TO(UserController::create, "/api/users",
 
 ## 数据库（SQLite）
 
-- 默认使用 SQLite，数据库文件位于 `data/c_web.db`（首次启动自动创建）
+- 默认使用 SQLite，数据库文件位于 `data/drogon-admin.db`（首次启动自动创建）
 - 启动时 `core::Bootstrap` 会自动执行 `sql/schema.sql`，存在的表不会重复创建
 - schema 内置种子数据：默认角色 `admin`（全部权限）与 `user`（仅仪表盘+个人中心）
 - `config/config.json` 中 `db_clients` 段控制连接参数；SQLite 写为单连接更稳妥：
@@ -213,7 +213,7 @@ ADD_METHOD_TO(UserController::create, "/api/users",
   "db_clients": [{
       "name": "default",
       "rdbms": "sqlite3",
-      "filename": "data/c_web.db",
+      "filename": "data/drogon-admin.db",
       "connection_number": 1
   }]
   ```
@@ -222,4 +222,4 @@ ADD_METHOD_TO(UserController::create, "/api/users",
 ## 查看数据库
 
 - 推荐 **DB Browser for SQLite**（https://sqlitebrowser.org/）
-- 或命令行：`sqlite3 data\c_web.db "SELECT * FROM users;"`
+- 或命令行：`sqlite3 data\drogon-admin.db "SELECT * FROM users;"`

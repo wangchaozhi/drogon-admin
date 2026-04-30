@@ -17,7 +17,7 @@ export class ApiError extends Error {
   }
 }
 
-const TOKEN_KEY = 'c_web_token'
+const TOKEN_KEY = 'drogon_admin_token'
 
 export const tokenStore = {
   get(): string | null {

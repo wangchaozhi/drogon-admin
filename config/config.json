@@ -14,7 +14,7 @@
         "client_max_body_size": "10M",
         "log": {
             "log_path": "",
-            "logfile_base_name": "c_web",
+            "logfile_base_name": "drogon-admin",
             "log_size_limit": 100000000,
             "log_level": "DEBUG"
         },
@@ -24,7 +24,7 @@
         "use_gzip": true,
         "static_files_cache_time": 5,
         "idle_connection_timeout": 60,
-        "server_header_field": "c_web/0.1",
+        "server_header_field": "drogon-admin/0.1",
         "keepalive_requests": 0,
         "pipelining_requests": 0
     },
@@ -32,7 +32,7 @@
         {
             "name": "default",
             "rdbms": "sqlite3",
-            "filename": "data/c_web.db",
+            "filename": "data/drogon-admin.db",
             "connection_number": 1,
             "is_fast": false,
             "timeout": -1.0
@@ -48,6 +48,6 @@
     "custom_config": {
         "jwt_secret": "change-me-in-production",
         "jwt_expire_seconds": 7200,
-        "super_admin_email": "admin@c_web.local"
+        "super_admin_email": "admin@drogon-admin.local"
     }
 }

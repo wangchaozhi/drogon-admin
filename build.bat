@@ -1,6 +1,6 @@
 @echo off
 REM =======================================================================
-REM  c_web build script (Windows / MSVC + vcpkg)
+REM  drogon-admin build script (Windows / MSVC + vcpkg)
 REM  Requirement: run inside "x64 Native Tools Command Prompt for VS 2022"
 REM  VCPKG_ROOT: default to E:\dev\vcpkg if not set in environment
 REM =======================================================================
@@ -81,5 +81,5 @@ cmake --build build --config Release -j
 if errorlevel 1 exit /b 1
 
 echo.
-echo [DONE] Output: build\Release\c_web.exe
+echo [DONE] Output: build\Release\drogon-admin.exe
 endlocal

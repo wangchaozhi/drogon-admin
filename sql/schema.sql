@@ -1,4 +1,4 @@
--- c_web 初始化建表脚本（SQLite）
+-- drogon-admin 初始化建表脚本（SQLite）
 -- 启动时由 core::Bootstrap 执行一次，存在即跳过。
 
 CREATE TABLE IF NOT EXISTS users (

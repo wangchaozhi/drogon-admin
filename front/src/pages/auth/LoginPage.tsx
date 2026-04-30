@@ -54,7 +54,7 @@ export default function LoginPage() {
         <div className="login-hero-inner">
           <div className="login-logo">
             <span className="login-logo-dot" />
-            <span className="login-logo-text">c_web</span>
+            <span className="login-logo-text">drogon-admin</span>
           </div>
           <Title level={1} className="login-hero-title">
             精致、现代、高效的

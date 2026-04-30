@@ -1,5 +1,5 @@
 //
-// c_web 入口：把启动流程下放给 core::Bootstrap，main 只保持薄薄一层。
+// drogon-admin 入口：把启动流程下放给 core::Bootstrap，main 只保持薄薄一层。
 // Controller / Filter / Plugin 由 Drogon 的 IoC 自动注册，main 不需要 include 它们。
 //
 #include "core/Bootstrap.h"

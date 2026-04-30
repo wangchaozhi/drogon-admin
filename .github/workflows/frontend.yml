@@ -132,7 +132,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         shell: bash
         run: |
-          asset="c_web-front-${RELEASE_TAG}.zip"
+          asset="drogon-admin-front-${RELEASE_TAG}.zip"
           (cd front/dist && zip -r "$GITHUB_WORKSPACE/$asset" .)
           echo "ASSET_PATH=$asset" >> "$GITHUB_ENV"
 

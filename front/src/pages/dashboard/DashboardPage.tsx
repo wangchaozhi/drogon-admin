@@ -15,7 +15,7 @@ export default function DashboardPage() {
           你好，{user?.name} 👋
         </Title>
         <Paragraph type="secondary" style={{ margin: '4px 0 0' }}>
-          欢迎回到 c_web 控制台。当前角色：{roles.join(' / ') || '—'}
+          欢迎回到 drogon-admin 控制台。当前角色：{roles.join(' / ') || '—'}
         </Paragraph>
       </Card>
 
