@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 if(MSVC)
-    add_compile_options(/utf-8 /W3 /EHsc)
+    add_compile_options(/utf-8 /W3 /EHsc /MP)
     add_definitions(-D_CRT_SECURE_NO_WARNINGS -DNOMINMAX -DWIN32_LEAN_AND_MEAN)
 endif()
 
