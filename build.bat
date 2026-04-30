@@ -39,7 +39,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [1/3] Installing dependencies via vcpkg manifest...
+echo [1/2] Ensuring vcpkg manifest baseline...
 
 REM vcpkg manifest mode requires a builtin-baseline. Auto-inject if missing.
 findstr /C:"builtin-baseline" vcpkg.json >nul 2>nul
@@ -52,16 +52,13 @@ if errorlevel 1 (
     )
 )
 
-"%VCPKG_ROOT%\vcpkg.exe" install --triplet x64-windows-static-md
-if errorlevel 1 exit /b 1
-
-echo [2/3] Configuring CMake...
+echo [2/2] Configuring and building (vcpkg manifest mode, overlay triplets)...
 cmake -B build -S . -A x64 ^
     -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake ^
-    -DVCPKG_TARGET_TRIPLET=x64-windows-static-md
+    -DVCPKG_TARGET_TRIPLET=x64-windows-static-md ^
+    -DVCPKG_OVERLAY_TRIPLETS=%CD%\triplets
 if errorlevel 1 exit /b 1
 
-echo [3/3] Building Release...
 cmake --build build --config Release -j
 if errorlevel 1 exit /b 1
 

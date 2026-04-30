@@ -131,7 +131,8 @@ jobs:
         run: |
           cmake -B build -S . -A x64 ^
             -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake ^
-            -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}
+            -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} ^
+            -DVCPKG_OVERLAY_TRIPLETS=%GITHUB_WORKSPACE%\triplets
 
       - name: CMake configure (Unix)
         if: runner.os != 'Windows'
@@ -140,7 +141,8 @@ jobs:
           cmake -B build -S . -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-            -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}
+            -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} \
+            -DVCPKG_OVERLAY_TRIPLETS="$GITHUB_WORKSPACE/triplets"
 
       # ---------- 构建 ----------
       - name: CMake build (Windows)
