@@ -1,0 +1,18 @@
+# Build
+/build/
+/out/
+/cmake-build-*/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+
+# vcpkg
+vcpkg_installed/
+
+# Runtime
+logs/
+uploads/
+*.log

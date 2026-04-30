@@ -1,0 +1,14 @@
+{
+    "name": "c-web",
+    "version": "0.1.0",
+    "dependencies": [
+        {
+            "name": "drogon",
+            "features": ["sqlite3"]
+        },
+        "jsoncpp",
+        "openssl",
+        "zlib",
+        "sqlite3"
+    ]
+}
