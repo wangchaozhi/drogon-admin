@@ -1,9 +1,9 @@
 # c_web
 
-[![backend](https://github.com/wangchaozhi/brogon-admin/actions/workflows/backend.yml/badge.svg)](https://github.com/wangchaozhi/brogon-admin/actions/workflows/backend.yml)
-[![frontend](https://github.com/wangchaozhi/brogon-admin/actions/workflows/frontend.yml/badge.svg)](https://github.com/wangchaozhi/brogon-admin/actions/workflows/frontend.yml)
+[![backend](https://github.com/wangchaozhi/drogon-admin/actions/workflows/backend.yml/badge.svg)](https://github.com/wangchaozhi/drogon-admin/actions/workflows/backend.yml)
+[![frontend](https://github.com/wangchaozhi/drogon-admin/actions/workflows/frontend.yml/badge.svg)](https://github.com/wangchaozhi/drogon-admin/actions/workflows/frontend.yml)
 
-基于 **Drogon** 的模块化 C++ Web 服务骨架 + **React 19 + Ant Design 6** 前端，Windows + MSVC + vcpkg 构建。
+基于 **Drogon** 的模块化 C++ Web 服务骨架 + **React 19 + Ant Design 6** 前端，Windows + MSVC + vcpkg 构建。全链路 **C++20 协程**（`drogon::Task` / `AsyncTask` / `co_await execSqlCoro`），无同步 SQL 阻塞 event loop。
 
 ## 持续集成与发版
 
@@ -35,16 +35,16 @@ c_web/
 │   ├── plugins/                # 全局单例：ConfigPlugin
 │   └── modules/                # 业务模块（自治）
 │       ├── user/
-│       │   ├── UserController  # HTTP 路由（/api/auth/* 与 /api/users/*）
-│       │   ├── UserService     # 业务逻辑（异步）
-│       │   ├── UserRepository  # 数据访问（SQLite 异步）
+│       │   ├── UserController  # HTTP 路由（AsyncTask 协程）
+│       │   ├── UserService     # 业务编排（drogon::Task）
+│       │   ├── UserRepository  # 数据访问（co_await execSqlCoro）
 │       │   └── dto/            # 请求 / 响应 DTO（LoginReq / CreateUserReq ...）
 │       └── rbac/
-│           ├── RoleController      # 角色管理（/api/roles/*）
-│           ├── MenuController      # 菜单管理（/api/menus/*）
-│           ├── PermissionController# 权限列表（/api/permissions）
-│           ├── RbacService         # RBAC 业务逻辑
-│           ├── RbacRepository      # RBAC 数据访问
+│           ├── RoleController      # 角色管理（AsyncTask）
+│           ├── MenuController      # 菜单管理（AsyncTask）
+│           ├── PermissionController# 权限列表（AsyncTask）
+│           ├── RbacService         # RBAC 业务逻辑 + 缓存（协程）
+│           ├── RbacRepository      # RBAC 数据访问（协程）
 │           └── dto/                # RBAC DTO
 ├── front/                      # 前端（React 19 + Vite + Ant Design 6 + React Router）
 │   └── src/
@@ -68,7 +68,7 @@ c_web/
 ## 前置依赖
 
 ### 后端
-1. Visual Studio 2022（含 C++ 桌面开发组件）
+1. Visual Studio 2022（含 C++ 桌面开发组件，需支持 C++20 协程）
 2. CMake 3.20+
 3. [vcpkg](https://github.com/microsoft/vcpkg)，并设置环境变量 `VCPKG_ROOT`
 4. Drogon 已启用 `sqlite3` feature，依赖：`drogon[sqlite3]` / `jsoncpp` / `openssl` / `zlib` / `sqlite3`（vcpkg.json 已声明，首次构建会自动触发）
@@ -172,6 +172,29 @@ ADD_METHOD_TO(UserController::create, "/api/users",
 ```
 
 或在 `config.json` 中配置全局 Filters。
+
+## 全链路协程架构
+
+- **C++ 标准**：`CMAKE_CXX_STANDARD = 20`，启用 Drogon 协程支持。
+- **Repository**：所有方法签名 `drogon::Task<T>`，数据库访问统一使用 `co_await db->execSqlCoro(...)`，Drogon 在 SQLite worker 线程执行后 resume 原协程。
+- **Service**：
+  - `UserService` / `RbacService` 方法返回 `drogon::Task<T>`，在协程内 `co_await` 串联 Repository 调用。
+  - `RbacService` 采用**双检 + 短临锁**的缓存范式：进入协程先加锁读缓存 → 命中直接返回；未命中则释放锁执行 `co_await`，完成后再加锁回填。`co_await` 期间绝不持锁，避免跨线程 resume 引发死锁。
+  - 登录凭证错误抛 `LoginInvalidError`，由 Controller 转 401。
+- **Controller**：方法签名 `drogon::AsyncTask xxx(HttpRequestPtr req, std::function<void(const HttpResponsePtr&)> cb, ...)`。Drogon 识别协程返回类型并托管 frame 生命周期；参数按值传入 frame，安全 `co_await`。
+- **Filter**：`HttpFilter::doFilter` 为虚函数签名固定为 `void`，内部调用 **free-function 协程** `loadAndContinue(...)` 启动 `AsyncTask` 完成 RBAC 视图加载后再 `fccb()`。
+- **禁止反模式**：严禁在 `execSqlAsync` 的回调中直接调用 `execSqlSync`——SQLite 单 worker 线程会自锁卡死。本仓全链路已改造为 `co_await execSqlCoro`，仅保留 `Bootstrap::init` 里一次性的 schema 迁移使用 `execSqlSync`（运行在主线程启动阶段，不涉及 worker 竞争）。
+
+## 日志
+
+- 双路输出：`trantor::AsyncFileLogger` 写 `logs/c_web.log`（自动按大小切片）+ 自定义 `AsyncConsoleSink` 后台线程刷 `stdout`，业务线程只入队，Windows QuickEdit"选中"阻塞 stdout 时不会拖住 HTTP 线程。
+- `sql/schema.sql` 的幂等迁移（如 `ALTER TABLE ADD COLUMN` 已存在列）会被降级为 DEBUG，避免 ERROR 噪音。
+
+## 首个注册用户自动晋升管理员
+
+- 系统里 `user_roles` 表不存在 `role_id=1` 的绑定时，下一个注册的用户自动获得 admin 角色；
+- 否则按 `config.superAdminEmail` 匹配；其他走普通 `user` 角色。
+- 相关逻辑见 [`UserService::assignDefaultRole`](src/modules/user/UserService.cc) 与 [`UserRepository::hasAnyAdmin`](src/modules/user/UserRepository.cc)。
 
 ## RBAC 权限设计
 

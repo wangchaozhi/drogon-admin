@@ -15,9 +15,9 @@ drogon::orm::DbClientPtr RbacRepository::db() const {
 
 // ==================== 角色 ====================
 
-std::vector<dto::RoleDto> RbacRepository::listRoles() {
+drogon::Task<std::vector<dto::RoleDto>> RbacRepository::listRoles() {
     std::vector<dto::RoleDto> out;
-    auto r = db()->execSqlSync(
+    auto r = co_await db()->execSqlCoro(
         "SELECT id,code,name,description,created_at FROM roles ORDER BY id ASC");
     out.reserve(r.size());
     for (const auto& row : r) {
@@ -29,13 +29,13 @@ std::vector<dto::RoleDto> RbacRepository::listRoles() {
         d.createdAt   = row["created_at"].as<int64_t>();
         out.push_back(std::move(d));
     }
-    return out;
+    co_return out;
 }
 
-std::optional<dto::RoleDto> RbacRepository::getRole(int64_t id) {
-    auto r = db()->execSqlSync(
+drogon::Task<std::optional<dto::RoleDto>> RbacRepository::getRole(int64_t id) {
+    auto r = co_await db()->execSqlCoro(
         "SELECT id,code,name,description,created_at FROM roles WHERE id=?", id);
-    if (r.empty()) return std::nullopt;
+    if (r.empty()) co_return std::nullopt;
     const auto& row = r[0];
     dto::RoleDto d;
     d.id          = row["id"].as<int64_t>();
@@ -43,13 +43,14 @@ std::optional<dto::RoleDto> RbacRepository::getRole(int64_t id) {
     d.name        = row["name"].as<std::string>();
     d.description = row["description"].as<std::string>();
     d.createdAt   = row["created_at"].as<int64_t>();
-    return d;
+    co_return d;
 }
 
-std::optional<dto::RoleDto> RbacRepository::getRoleByCode(const std::string& code) {
-    auto r = db()->execSqlSync(
+drogon::Task<std::optional<dto::RoleDto>>
+RbacRepository::getRoleByCode(std::string code) {
+    auto r = co_await db()->execSqlCoro(
         "SELECT id,code,name,description,created_at FROM roles WHERE code=?", code);
-    if (r.empty()) return std::nullopt;
+    if (r.empty()) co_return std::nullopt;
     const auto& row = r[0];
     dto::RoleDto d;
     d.id          = row["id"].as<int64_t>();
@@ -57,55 +58,57 @@ std::optional<dto::RoleDto> RbacRepository::getRoleByCode(const std::string& cod
     d.name        = row["name"].as<std::string>();
     d.description = row["description"].as<std::string>();
     d.createdAt   = row["created_at"].as<int64_t>();
-    return d;
+    co_return d;
 }
 
-dto::RoleDto RbacRepository::createRole(const dto::RoleUpsertReq& r) {
+drogon::Task<dto::RoleDto> RbacRepository::createRole(dto::RoleUpsertReq r) {
     int64_t now = common::TimeUtil::nowSec();
-    auto res = db()->execSqlSync(
+    auto res = co_await db()->execSqlCoro(
         "INSERT INTO roles(code,name,description,created_at) VALUES(?,?,?,?)",
         r.code, r.name, r.description, now);
     dto::RoleDto d;
     d.id          = res.insertId();
-    d.code        = r.code;
-    d.name        = r.name;
-    d.description = r.description;
+    d.code        = std::move(r.code);
+    d.name        = std::move(r.name);
+    d.description = std::move(r.description);
     d.createdAt   = now;
-    return d;
+    co_return d;
 }
 
-bool RbacRepository::updateRole(int64_t id, const dto::RoleUpsertReq& r) {
-    auto res = db()->execSqlSync(
+drogon::Task<bool> RbacRepository::updateRole(int64_t id, dto::RoleUpsertReq r) {
+    auto res = co_await db()->execSqlCoro(
         "UPDATE roles SET name=?, description=? WHERE id=?",
         r.name, r.description, id);
-    return res.affectedRows() > 0;
+    co_return res.affectedRows() > 0;
 }
 
-bool RbacRepository::deleteRole(int64_t id) {
-    auto res = db()->execSqlSync("DELETE FROM roles WHERE id=?", id);
-    db()->execSqlSync("DELETE FROM role_permissions WHERE role_id=?", id);
-    db()->execSqlSync("DELETE FROM user_roles WHERE role_id=?", id);
-    return res.affectedRows() > 0;
+drogon::Task<bool> RbacRepository::deleteRole(int64_t id) {
+    auto res = co_await db()->execSqlCoro("DELETE FROM roles WHERE id=?", id);
+    co_await db()->execSqlCoro("DELETE FROM role_permissions WHERE role_id=?", id);
+    co_await db()->execSqlCoro("DELETE FROM user_roles WHERE role_id=?", id);
+    co_return res.affectedRows() > 0;
 }
 
-std::vector<int64_t> RbacRepository::getRolePermissionIds(int64_t roleId) {
+drogon::Task<std::vector<int64_t>>
+RbacRepository::getRolePermissionIds(int64_t roleId) {
     std::vector<int64_t> ids;
-    auto r = db()->execSqlSync(
+    auto r = co_await db()->execSqlCoro(
         "SELECT permission_id FROM role_permissions WHERE role_id=?", roleId);
     ids.reserve(r.size());
     for (const auto& row : r) ids.push_back(row["permission_id"].as<int64_t>());
-    return ids;
+    co_return ids;
 }
 
-void RbacRepository::setRolePermissions(int64_t roleId,
-                                        const std::vector<int64_t>& permIds) {
+drogon::Task<> RbacRepository::setRolePermissions(int64_t roleId,
+                                                  std::vector<int64_t> permIds) {
     auto c = db();
-    c->execSqlSync("DELETE FROM role_permissions WHERE role_id=?", roleId);
+    co_await c->execSqlCoro("DELETE FROM role_permissions WHERE role_id=?", roleId);
     for (auto pid : permIds) {
-        c->execSqlSync(
+        co_await c->execSqlCoro(
             "INSERT OR IGNORE INTO role_permissions(role_id,permission_id) VALUES(?,?)",
             roleId, pid);
     }
+    co_return;
 }
 
 // ==================== 菜单 ====================
@@ -127,31 +130,32 @@ dto::MenuDto rowToMenu(const drogon::orm::Row& row) {
 }
 } // namespace
 
-std::vector<dto::MenuDto> RbacRepository::listMenus() {
+drogon::Task<std::vector<dto::MenuDto>> RbacRepository::listMenus() {
     std::vector<dto::MenuDto> out;
-    auto r = db()->execSqlSync(
+    auto r = co_await db()->execSqlCoro(
         "SELECT id,parent_id,name,path,icon,component,sort,type,visible,created_at "
         "FROM menus ORDER BY sort ASC, id ASC");
     out.reserve(r.size());
     for (const auto& row : r) out.push_back(rowToMenu(row));
-    return out;
+    co_return out;
 }
 
-std::vector<dto::MenuDto> RbacRepository::menuTree() {
-    return buildTree(listMenus());
+drogon::Task<std::vector<dto::MenuDto>> RbacRepository::menuTree() {
+    auto flat = co_await listMenus();
+    co_return buildTree(std::move(flat));
 }
 
-std::optional<dto::MenuDto> RbacRepository::getMenu(int64_t id) {
-    auto r = db()->execSqlSync(
+drogon::Task<std::optional<dto::MenuDto>> RbacRepository::getMenu(int64_t id) {
+    auto r = co_await db()->execSqlCoro(
         "SELECT id,parent_id,name,path,icon,component,sort,type,visible,created_at "
         "FROM menus WHERE id=?", id);
-    if (r.empty()) return std::nullopt;
-    return rowToMenu(r[0]);
+    if (r.empty()) co_return std::nullopt;
+    co_return rowToMenu(r[0]);
 }
 
-dto::MenuDto RbacRepository::createMenu(const dto::MenuUpsertReq& m) {
+drogon::Task<dto::MenuDto> RbacRepository::createMenu(dto::MenuUpsertReq m) {
     int64_t now = common::TimeUtil::nowSec();
-    auto res = db()->execSqlSync(
+    auto res = co_await db()->execSqlCoro(
         "INSERT INTO menus(parent_id,name,path,icon,component,sort,type,visible,created_at) "
         "VALUES(?,?,?,?,?,?,?,?,?)",
         m.parentId, m.name, m.path, m.icon, m.component,
@@ -159,39 +163,39 @@ dto::MenuDto RbacRepository::createMenu(const dto::MenuUpsertReq& m) {
     dto::MenuDto d;
     d.id        = res.insertId();
     d.parentId  = m.parentId;
-    d.name      = m.name;
-    d.path      = m.path;
-    d.icon      = m.icon;
-    d.component = m.component;
+    d.name      = std::move(m.name);
+    d.path      = std::move(m.path);
+    d.icon      = std::move(m.icon);
+    d.component = std::move(m.component);
     d.sort      = m.sort;
-    d.type      = m.type;
+    d.type      = std::move(m.type);
     d.visible   = m.visible;
     d.createdAt = now;
-    return d;
+    co_return d;
 }
 
-bool RbacRepository::updateMenu(int64_t id, const dto::MenuUpsertReq& m) {
-    auto res = db()->execSqlSync(
+drogon::Task<bool> RbacRepository::updateMenu(int64_t id, dto::MenuUpsertReq m) {
+    auto res = co_await db()->execSqlCoro(
         "UPDATE menus SET parent_id=?, name=?, path=?, icon=?, component=?, "
         "sort=?, type=?, visible=? WHERE id=?",
         m.parentId, m.name, m.path, m.icon, m.component,
         m.sort, m.type, m.visible, id);
-    return res.affectedRows() > 0;
+    co_return res.affectedRows() > 0;
 }
 
-bool RbacRepository::deleteMenu(int64_t id) {
+drogon::Task<bool> RbacRepository::deleteMenu(int64_t id) {
     auto c = db();
     // 顺便删除挂在该菜单下的权限
-    c->execSqlSync("DELETE FROM permissions WHERE menu_id=?", id);
-    auto res = c->execSqlSync("DELETE FROM menus WHERE id=?", id);
-    return res.affectedRows() > 0;
+    co_await c->execSqlCoro("DELETE FROM permissions WHERE menu_id=?", id);
+    auto res = co_await c->execSqlCoro("DELETE FROM menus WHERE id=?", id);
+    co_return res.affectedRows() > 0;
 }
 
 // ==================== 权限 ====================
 
-std::vector<dto::PermissionDto> RbacRepository::listPermissions() {
+drogon::Task<std::vector<dto::PermissionDto>> RbacRepository::listPermissions() {
     std::vector<dto::PermissionDto> out;
-    auto r = db()->execSqlSync(
+    auto r = co_await db()->execSqlCoro(
         "SELECT id,code,name,type,menu_id,created_at FROM permissions "
         "ORDER BY menu_id ASC, id ASC");
     out.reserve(r.size());
@@ -205,45 +209,49 @@ std::vector<dto::PermissionDto> RbacRepository::listPermissions() {
         p.createdAt = row["created_at"].as<int64_t>();
         out.push_back(std::move(p));
     }
-    return out;
+    co_return out;
 }
 
 // ==================== 用户关联 ====================
 
-std::vector<int64_t> RbacRepository::getUserRoleIds(int64_t userId) {
+drogon::Task<std::vector<int64_t>>
+RbacRepository::getUserRoleIds(int64_t userId) {
     std::vector<int64_t> ids;
-    auto r = db()->execSqlSync(
+    auto r = co_await db()->execSqlCoro(
         "SELECT role_id FROM user_roles WHERE user_id=?", userId);
     ids.reserve(r.size());
     for (const auto& row : r) ids.push_back(row["role_id"].as<int64_t>());
-    return ids;
+    co_return ids;
 }
 
-void RbacRepository::setUserRoles(int64_t userId,
-                                  const std::vector<int64_t>& roleIds) {
+drogon::Task<> RbacRepository::setUserRoles(int64_t userId,
+                                            std::vector<int64_t> roleIds) {
     auto c = db();
-    c->execSqlSync("DELETE FROM user_roles WHERE user_id=?", userId);
+    co_await c->execSqlCoro("DELETE FROM user_roles WHERE user_id=?", userId);
     for (auto rid : roleIds) {
-        c->execSqlSync(
+        co_await c->execSqlCoro(
             "INSERT OR IGNORE INTO user_roles(user_id,role_id) VALUES(?,?)",
             userId, rid);
     }
+    co_return;
 }
 
-std::vector<std::string> RbacRepository::getUserRoleCodes(int64_t userId) {
+drogon::Task<std::vector<std::string>>
+RbacRepository::getUserRoleCodes(int64_t userId) {
     std::vector<std::string> codes;
-    auto r = db()->execSqlSync(
+    auto r = co_await db()->execSqlCoro(
         "SELECT r.code FROM roles r JOIN user_roles ur ON ur.role_id = r.id "
         "WHERE ur.user_id = ? ORDER BY r.id",
         userId);
     codes.reserve(r.size());
     for (const auto& row : r) codes.push_back(row["code"].as<std::string>());
-    return codes;
+    co_return codes;
 }
 
-std::vector<std::string> RbacRepository::getUserPermCodes(int64_t userId) {
+drogon::Task<std::vector<std::string>>
+RbacRepository::getUserPermCodes(int64_t userId) {
     std::vector<std::string> codes;
-    auto r = db()->execSqlSync(
+    auto r = co_await db()->execSqlCoro(
         "SELECT DISTINCT p.code FROM permissions p "
         "JOIN role_permissions rp ON rp.permission_id = p.id "
         "JOIN user_roles ur ON ur.role_id = rp.role_id "
@@ -251,12 +259,13 @@ std::vector<std::string> RbacRepository::getUserPermCodes(int64_t userId) {
         userId);
     codes.reserve(r.size());
     for (const auto& row : r) codes.push_back(row["code"].as<std::string>());
-    return codes;
+    co_return codes;
 }
 
-std::vector<dto::MenuDto> RbacRepository::getUserMenuTree(int64_t userId) {
+drogon::Task<std::vector<dto::MenuDto>>
+RbacRepository::getUserMenuTree(int64_t userId) {
     // 1. 用户有权限进入的菜单 id（permissions.menu_id）
-    auto r = db()->execSqlSync(
+    auto r = co_await db()->execSqlCoro(
         "SELECT DISTINCT p.menu_id FROM permissions p "
         "JOIN role_permissions rp ON rp.permission_id = p.id "
         "JOIN user_roles ur ON ur.role_id = rp.role_id "
@@ -266,7 +275,7 @@ std::vector<dto::MenuDto> RbacRepository::getUserMenuTree(int64_t userId) {
     for (const auto& row : r) allow.insert(row["menu_id"].as<int64_t>());
 
     // 2. 全部菜单
-    auto all = listMenus();
+    auto all = co_await listMenus();
     std::unordered_map<int64_t, const dto::MenuDto*> byId;
     for (const auto& m : all) byId[m.id] = &m;
 
@@ -291,7 +300,7 @@ std::vector<dto::MenuDto> RbacRepository::getUserMenuTree(int64_t userId) {
     for (const auto& m : all) {
         if (m.visible && allow.count(m.id)) filtered.push_back(m);
     }
-    return buildTree(std::move(filtered));
+    co_return buildTree(std::move(filtered));
 }
 
 std::vector<dto::MenuDto> RbacRepository::buildTree(std::vector<dto::MenuDto> flat) {
@@ -306,7 +315,6 @@ std::vector<dto::MenuDto> RbacRepository::buildTree(std::vector<dto::MenuDto> fl
     for (auto& m : flat) byId.emplace(m.id, std::move(m));
 
     std::vector<dto::MenuDto> roots;
-    // 两轮：先把 parent 在 byId 的挂上去；其余作为根
     std::unordered_map<int64_t, std::vector<int64_t>> childIds;
     for (const auto& [id, m] : byId) {
         if (m.parentId > 0 && byId.count(m.parentId)) {
@@ -317,7 +325,6 @@ std::vector<dto::MenuDto> RbacRepository::buildTree(std::vector<dto::MenuDto> fl
         auto node = byId[id];
         auto itc = childIds.find(id);
         if (itc != childIds.end()) {
-            // 子节点按 sort/id 排序
             auto ids = itc->second;
             std::sort(ids.begin(), ids.end(),
                       [&](int64_t a, int64_t b) {
@@ -331,7 +338,6 @@ std::vector<dto::MenuDto> RbacRepository::buildTree(std::vector<dto::MenuDto> fl
         return node;
     };
 
-    // 收集根 id
     std::vector<int64_t> rootIds;
     for (const auto& [id, m] : byId) {
         if (m.parentId == 0 || !byId.count(m.parentId)) rootIds.push_back(id);

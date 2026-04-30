@@ -1,44 +1,44 @@
 #pragma once
 //
-// Service：业务编排层（异步版）。对 Repository 的调用全部走回调，
-// HTTP 线程不阻塞。真实项目会在此处加入事务、校验、跨仓库协作。
+// Service：业务编排层（协程版）。所有方法返回 drogon::Task<T>，
+// 在协程内以 co_await 串联 Repository 与 RbacService 调用。
 //
 #include "UserRepository.h"
 #include "dto/CreateUserReq.h"
 #include "dto/LoginReq.h"
 #include "modules/rbac/dto/MenuDto.h"
+#include <drogon/utils/coroutine.h>
 
 namespace modules::user {
 
-// 登录成功结果：token + 用户信息 + 角色 / 权限 / 菜单（便于前端一次拿齐）
+// 登录成功结果：token + 用户信息 + 角色 / 权限 / 菜单
 struct LoginResult {
     std::string  token;
     int64_t      expiresAt{0};
     dto::UserDto user;
-    std::vector<std::string>             roles;        // role.code 列表
-    std::vector<std::string>             permissions;  // permission.code 列表
-    std::vector<rbac::dto::MenuDto>      menus;        // 用户可见菜单树
+    std::vector<std::string>             roles;
+    std::vector<std::string>             permissions;
+    std::vector<rbac::dto::MenuDto>      menus;
+};
+
+// 登录失败（凭证错误）使用的异常，Controller 捕获后转 401
+class LoginInvalidError : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
 };
 
 class UserService {
 public:
     UserService() = default;
 
-    void getById(int64_t id,
-                 std::function<void(std::optional<dto::UserDto>)> onOk,
-                 DbErrCb onErr);
+    drogon::Task<std::optional<dto::UserDto>> getById(int64_t id);
 
     // 注册：写入前对密码做哈希；成功后自动绑定角色——
     // 系统首个用户晋升 admin，超管邮箱同样 admin，其余为普通 user
-    void create(const dto::CreateUserReq& req,
-                std::function<void(dto::UserDto)> onOk,
-                DbErrCb onErr);
+    drogon::Task<dto::UserDto> create(dto::CreateUserReq req);
 
-    // 登录：成功时 onOk 返回 LoginResult；用户不存在 / 密码错误时走 onInvalid
-    void login(const dto::LoginReq& req,
-               std::function<void(LoginResult)> onOk,
-               std::function<void(const std::string& /*msg*/)> onInvalid,
-               DbErrCb onErr);
+    // 登录：失败时抛 LoginInvalidError；DB 异常走底层抛出的 DrogonDbException
+    drogon::Task<LoginResult> login(dto::LoginReq req);
 
     UserRepository& repo() { return repo_; }
 

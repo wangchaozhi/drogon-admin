@@ -5,8 +5,35 @@
 #include "plugins/ConfigPlugin.h"
 #include "modules/rbac/RbacService.h"
 #include <drogon/drogon.h>
+#include <drogon/utils/coroutine.h>
 
 namespace filters {
+
+namespace {
+
+// 异步加载 RBAC 视图后决定放行 / 拒绝。
+// 参数按值传入（FilterCallback / FilterChainCallback 为 std::function，
+// HttpRequestPtr 为 shared_ptr），可安全复制到协程 frame。
+drogon::AsyncTask loadAndContinue(drogon::HttpRequestPtr req,
+                                  int64_t userId,
+                                  drogon::FilterCallback fcb,
+                                  drogon::FilterChainCallback fccb) {
+    try {
+        auto view = co_await modules::rbac::RbacService::instance().getUserView(userId);
+        auto attrs = req->attributes();
+        attrs->insert("roles",          view.roles);
+        attrs->insert("permissions",    view.perms);
+        attrs->insert("permissionsStr", view.permsStr);
+        fccb();
+    } catch (const std::exception& e) {
+        APP_LOG_ERROR << "load rbac view failed uid=" << userId
+                      << " err=" << e.what();
+        fcb(core::Result::fail(5004, "load permissions failed",
+                               drogon::k500InternalServerError));
+    }
+}
+
+} // namespace
 
 void AuthFilter::doFilter(const drogon::HttpRequestPtr& req,
                           drogon::FilterCallback&& fcb,
@@ -30,26 +57,14 @@ void AuthFilter::doFilter(const drogon::HttpRequestPtr& req,
         return;
     }
 
-    // 基础字段
+    // 基础字段同步写入 attributes
     auto attrs = req->attributes();
     attrs->insert("userId", payload->userId);
     attrs->insert("email",  payload->email);
 
-    // RBAC 权限视图（带缓存，首次冷加载才打 DB）
-    try {
-        auto view = modules::rbac::RbacService::instance().getUserView(payload->userId);
-        attrs->insert("roles",          view.roles);
-        attrs->insert("permissions",    view.perms);
-        attrs->insert("permissionsStr", view.permsStr);
-    } catch (const std::exception& e) {
-        APP_LOG_ERROR << "load rbac view failed uid=" << payload->userId
-                      << " err=" << e.what();
-        fcb(core::Result::fail(5004, "load permissions failed",
-                               drogon::k500InternalServerError));
-        return;
-    }
-
-    fccb();
+    // RBAC 视图可能冷加载 → 异步协程里 co_await，
+    // 不阻塞当前 event loop，完成后再调 fccb()。
+    loadAndContinue(req, payload->userId, std::move(fcb), std::move(fccb));
 }
 
 } // namespace filters

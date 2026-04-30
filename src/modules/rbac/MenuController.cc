@@ -15,10 +15,11 @@ MenuController::MenuController() {
     reg.bind("DELETE", "/api/menus/(\\d+)",       "menu:delete");
 }
 
-void MenuController::list(const drogon::HttpRequestPtr&,
-                          std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+drogon::AsyncTask MenuController::list(
+    drogon::HttpRequestPtr /*req*/,
+    std::function<void(const drogon::HttpResponsePtr&)> cb) {
     try {
-        auto items = RbacService::instance().repo().listMenus();
+        auto items = co_await RbacService::instance().repo().listMenus();
         Json::Value arr(Json::arrayValue);
         for (const auto& m : items) arr.append(m.toJson());
         cb(core::Result::ok(arr));
@@ -28,10 +29,11 @@ void MenuController::list(const drogon::HttpRequestPtr&,
     }
 }
 
-void MenuController::tree(const drogon::HttpRequestPtr&,
-                          std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+drogon::AsyncTask MenuController::tree(
+    drogon::HttpRequestPtr /*req*/,
+    std::function<void(const drogon::HttpResponsePtr&)> cb) {
     try {
-        auto roots = RbacService::instance().repo().menuTree();
+        auto roots = co_await RbacService::instance().repo().menuTree();
         Json::Value arr(Json::arrayValue);
         for (const auto& m : roots) arr.append(m.toJson());
         cb(core::Result::ok(arr));
@@ -41,15 +43,16 @@ void MenuController::tree(const drogon::HttpRequestPtr&,
     }
 }
 
-void MenuController::create(const drogon::HttpRequestPtr& req,
-                            std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+drogon::AsyncTask MenuController::create(
+    drogon::HttpRequestPtr req,
+    std::function<void(const drogon::HttpResponsePtr&)> cb) {
     auto json = req->getJsonObject();
-    if (!json) { cb(core::Result::fail(4001, "invalid json body")); return; }
+    if (!json) { cb(core::Result::fail(4001, "invalid json body")); co_return; }
     std::string err;
     auto m = dto::MenuUpsertReq::parse(*json, err);
-    if (!m) { cb(core::Result::fail(4002, err)); return; }
+    if (!m) { cb(core::Result::fail(4002, err)); co_return; }
     try {
-        auto saved = RbacService::instance().repo().createMenu(*m);
+        auto saved = co_await RbacService::instance().repo().createMenu(*m);
         RbacService::instance().invalidateAll();
         cb(core::Result::ok(saved.toJson(), "created"));
     } catch (const std::exception& e) {
@@ -58,21 +61,23 @@ void MenuController::create(const drogon::HttpRequestPtr& req,
     }
 }
 
-void MenuController::update(const drogon::HttpRequestPtr& req,
-                            std::function<void(const drogon::HttpResponsePtr&)>&& cb,
-                            int64_t id) {
+drogon::AsyncTask MenuController::update(
+    drogon::HttpRequestPtr req,
+    std::function<void(const drogon::HttpResponsePtr&)> cb,
+    int64_t id) {
     auto json = req->getJsonObject();
-    if (!json) { cb(core::Result::fail(4001, "invalid json body")); return; }
+    if (!json) { cb(core::Result::fail(4001, "invalid json body")); co_return; }
     std::string err;
     auto m = dto::MenuUpsertReq::parse(*json, err);
-    if (!m) { cb(core::Result::fail(4002, err)); return; }
+    if (!m) { cb(core::Result::fail(4002, err)); co_return; }
     try {
-        if (!RbacService::instance().repo().updateMenu(id, *m)) {
+        bool ok = co_await RbacService::instance().repo().updateMenu(id, *m);
+        if (!ok) {
             cb(core::Result::notFound("menu not found"));
-            return;
+            co_return;
         }
         RbacService::instance().invalidateAll();
-        auto saved = RbacService::instance().repo().getMenu(id);
+        auto saved = co_await RbacService::instance().repo().getMenu(id);
         cb(core::Result::ok(saved ? saved->toJson() : Json::nullValue, "updated"));
     } catch (const std::exception& e) {
         cb(core::Result::fail(5003, std::string("db error: ") + e.what(),
@@ -80,13 +85,15 @@ void MenuController::update(const drogon::HttpRequestPtr& req,
     }
 }
 
-void MenuController::remove(const drogon::HttpRequestPtr&,
-                            std::function<void(const drogon::HttpResponsePtr&)>&& cb,
-                            int64_t id) {
+drogon::AsyncTask MenuController::remove(
+    drogon::HttpRequestPtr /*req*/,
+    std::function<void(const drogon::HttpResponsePtr&)> cb,
+    int64_t id) {
     try {
-        if (!RbacService::instance().repo().deleteMenu(id)) {
+        bool ok = co_await RbacService::instance().repo().deleteMenu(id);
+        if (!ok) {
             cb(core::Result::notFound("menu not found"));
-            return;
+            co_return;
         }
         RbacService::instance().invalidateAll();
         cb(core::Result::ok(Json::nullValue, "deleted"));

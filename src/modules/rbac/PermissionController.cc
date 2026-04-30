@@ -11,10 +11,11 @@ PermissionController::PermissionController() {
         "GET", "/api/permissions", "role:view");
 }
 
-void PermissionController::list(const drogon::HttpRequestPtr&,
-                                std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+drogon::AsyncTask PermissionController::list(
+    drogon::HttpRequestPtr /*req*/,
+    std::function<void(const drogon::HttpResponsePtr&)> cb) {
     try {
-        auto perms = RbacService::instance().repo().listPermissions();
+        auto perms = co_await RbacService::instance().repo().listPermissions();
         Json::Value arr(Json::arrayValue);
         for (const auto& p : perms) arr.append(p.toJson());
         cb(core::Result::ok(arr));

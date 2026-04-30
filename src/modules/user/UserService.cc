@@ -11,7 +11,7 @@
 namespace modules::user {
 
 namespace {
-// 统一从 ConfigPlugin 读取 JWT 配置
+
 std::pair<std::string, int> jwtConfig() {
     auto* cfg = drogon::app().getPlugin<plugins::ConfigPlugin>();
     if (!cfg) return {"change-me", 7200};
@@ -23,102 +23,75 @@ std::string superAdminEmail() {
     return cfg ? cfg->superAdminEmail() : std::string("admin@c_web.local");
 }
 
-// 注册时刻 users 表是否"此前为空"：
-// 当前这条新记录已经写入，所以总数 <= 1 即表示此前没有任何用户
-bool isFirstRegisteredUser() {
-    try {
-        auto db = drogon::app().getDbClient();
-        if (!db) return false;  // 拿不到 DbClient 时保守处理，不提升权限
-        auto r = db->execSqlSync("SELECT COUNT(*) AS c FROM users");
-        if (r.empty()) return false;
-        return r[0]["c"].as<int64_t>() <= 1;
-    } catch (const std::exception& e) {
-        APP_LOG_ERROR << "isFirstRegisteredUser check failed: " << e.what();
-        return false;  // 查询异常时不提升，避免误授权
-    }
-}
-
-// 注册成功后自动绑定角色：
-// 1) 注册时 users 表此前为空 → 当前用户即首个管理员 (id=1)
+// 注册成功后自动绑定角色（协程版）：
+// 1) 系统尚未存在任何 admin → 当前用户即首个管理员 (id=1)
 // 2) 配置中的超管邮箱 → admin (id=1)
 // 3) 其他 → 普通用户 (id=2)
-void assignDefaultRole(int64_t userId, const std::string& email) {
+drogon::Task<> assignDefaultRole(UserRepository& repo,
+                                 int64_t userId,
+                                 std::string email) {
     auto& svc = rbac::RbacService::instance();
     try {
-        bool isFirstAdmin = isFirstRegisteredUser();
+        bool hasAdmin = co_await repo.hasAnyAdmin();
         int64_t roleId = 2;
-        if (isFirstAdmin) {
+        if (!hasAdmin) {
             roleId = 1;
             APP_LOG_INFO << "first registered user promoted to admin uid=" << userId
                          << " email=" << email;
         } else if (email == superAdminEmail()) {
             roleId = 1;
         }
-        auto current = svc.repo().getUserRoleIds(userId);
+        auto current = co_await svc.repo().getUserRoleIds(userId);
         if (std::find(current.begin(), current.end(), roleId) == current.end()) {
             current.push_back(roleId);
-            svc.repo().setUserRoles(userId, current);
+            co_await svc.repo().setUserRoles(userId, current);
             svc.invalidateUser(userId);
         }
     } catch (const std::exception& e) {
         APP_LOG_ERROR << "assignDefaultRole failed uid=" << userId
                       << " err=" << e.what();
     }
+    co_return;
 }
+
 } // namespace
 
-void UserService::getById(int64_t id,
-                          std::function<void(std::optional<dto::UserDto>)> onOk,
-                          DbErrCb onErr) {
-    repo_.findById(id, std::move(onOk), std::move(onErr));
+drogon::Task<std::optional<dto::UserDto>>
+UserService::getById(int64_t id) {
+    co_return co_await repo_.findById(id);
 }
 
-void UserService::create(const dto::CreateUserReq& req,
-                         std::function<void(dto::UserDto)> onOk,
-                         DbErrCb onErr) {
+drogon::Task<dto::UserDto>
+UserService::create(dto::CreateUserReq req) {
     auto hash = common::CryptoUtil::hashPassword(req.password);
-    repo_.insert(req.name, req.email, hash,
-        [onOk = std::move(onOk)](dto::UserDto u) {
-            assignDefaultRole(u.id, u.email);
-            onOk(std::move(u));
-        },
-        std::move(onErr));
+    auto u = co_await repo_.insert(req.name, req.email, hash);
+    co_await assignDefaultRole(repo_, u.id, u.email);
+    co_return u;
 }
 
-void UserService::login(const dto::LoginReq& req,
-                        std::function<void(LoginResult)> onOk,
-                        std::function<void(const std::string&)> onInvalid,
-                        DbErrCb onErr) {
-    repo_.findByEmail(
-        req.email,
-        [password = req.password,
-         onOk      = std::move(onOk),
-         onInvalid = std::move(onInvalid)](std::optional<UserRecord> rec) {
-            if (!rec) { onInvalid("email or password incorrect"); return; }
-            if (!common::CryptoUtil::verifyPassword(password, rec->passwordHash)) {
-                onInvalid("email or password incorrect");
-                return;
-            }
-            auto [secret, expireSec] = jwtConfig();
-            LoginResult r;
-            r.user      = rec->user;
-            r.token     = common::JwtUtil::sign(
-                rec->user.id, rec->user.email, secret, expireSec);
-            r.expiresAt = common::TimeUtil::nowSec() + expireSec;
+drogon::Task<LoginResult>
+UserService::login(dto::LoginReq req) {
+    auto rec = co_await repo_.findByEmail(req.email);
+    if (!rec || !common::CryptoUtil::verifyPassword(req.password, rec->passwordHash)) {
+        throw LoginInvalidError("email or password incorrect");
+    }
 
-            // 附加 RBAC 视图（带缓存）
-            try {
-                auto view = rbac::RbacService::instance().getUserView(rec->user.id);
-                r.roles       = std::move(view.roles);
-                r.permissions = std::move(view.perms);
-                r.menus       = rbac::RbacService::instance().getUserMenus(rec->user.id);
-            } catch (const std::exception& e) {
-                APP_LOG_ERROR << "login fetch rbac failed uid=" << rec->user.id
-                              << " err=" << e.what();
-            }
-            onOk(std::move(r));
-        },
-        std::move(onErr));
+    auto [secret, expireSec] = jwtConfig();
+    LoginResult r;
+    r.user      = rec->user;
+    r.token     = common::JwtUtil::sign(rec->user.id, rec->user.email, secret, expireSec);
+    r.expiresAt = common::TimeUtil::nowSec() + expireSec;
+
+    try {
+        auto view = co_await rbac::RbacService::instance().getUserView(rec->user.id);
+        r.roles       = std::move(view.roles);
+        r.permissions = std::move(view.perms);
+        r.menus       = co_await rbac::RbacService::instance().getUserMenus(rec->user.id);
+    } catch (const std::exception& e) {
+        APP_LOG_ERROR << "login fetch rbac failed uid=" << rec->user.id
+                      << " err=" << e.what();
+    }
+    co_return r;
 }
 
 } // namespace modules::user

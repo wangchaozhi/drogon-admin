@@ -1,9 +1,10 @@
 #pragma once
 //
 // 角色管理接口。所有接口均受 AuthFilter + PermissionFilter 保护，
-// 具体权限码通过 PermissionRegistry 在 ctor 中注册。
+// 具体权限码通过 PermissionRegistry 在 ctor 中注册。协程版。
 //
 #include <drogon/HttpController.h>
+#include <drogon/utils/coroutine.h>
 
 namespace modules::rbac {
 
@@ -20,22 +21,22 @@ public:
         ADD_METHOD_TO(RoleController::setPerms,  "/api/roles/{id:\\d+}/permissions", drogon::Put, "filters::AuthFilter", "filters::PermissionFilter");
     METHOD_LIST_END
 
-    void list    (const drogon::HttpRequestPtr& req,
-                  std::function<void(const drogon::HttpResponsePtr&)>&& cb);
-    void create  (const drogon::HttpRequestPtr& req,
-                  std::function<void(const drogon::HttpResponsePtr&)>&& cb);
-    void update  (const drogon::HttpRequestPtr& req,
-                  std::function<void(const drogon::HttpResponsePtr&)>&& cb,
-                  int64_t id);
-    void remove  (const drogon::HttpRequestPtr& req,
-                  std::function<void(const drogon::HttpResponsePtr&)>&& cb,
-                  int64_t id);
-    void getPerms(const drogon::HttpRequestPtr& req,
-                  std::function<void(const drogon::HttpResponsePtr&)>&& cb,
-                  int64_t id);
-    void setPerms(const drogon::HttpRequestPtr& req,
-                  std::function<void(const drogon::HttpResponsePtr&)>&& cb,
-                  int64_t id);
+    drogon::AsyncTask list    (drogon::HttpRequestPtr req,
+                               std::function<void(const drogon::HttpResponsePtr&)> cb);
+    drogon::AsyncTask create  (drogon::HttpRequestPtr req,
+                               std::function<void(const drogon::HttpResponsePtr&)> cb);
+    drogon::AsyncTask update  (drogon::HttpRequestPtr req,
+                               std::function<void(const drogon::HttpResponsePtr&)> cb,
+                               int64_t id);
+    drogon::AsyncTask remove  (drogon::HttpRequestPtr req,
+                               std::function<void(const drogon::HttpResponsePtr&)> cb,
+                               int64_t id);
+    drogon::AsyncTask getPerms(drogon::HttpRequestPtr req,
+                               std::function<void(const drogon::HttpResponsePtr&)> cb,
+                               int64_t id);
+    drogon::AsyncTask setPerms(drogon::HttpRequestPtr req,
+                               std::function<void(const drogon::HttpResponsePtr&)> cb,
+                               int64_t id);
 };
 
 } // namespace modules::rbac

@@ -1,8 +1,9 @@
 #pragma once
 //
-// 权限列表查询接口（权限通过菜单维护，不直接增删）。
+// 权限列表查询接口（权限通过菜单维护，不直接增删）。协程版。
 //
 #include <drogon/HttpController.h>
+#include <drogon/utils/coroutine.h>
 
 namespace modules::rbac {
 
@@ -15,8 +16,8 @@ public:
                       "filters::AuthFilter", "filters::PermissionFilter");
     METHOD_LIST_END
 
-    void list(const drogon::HttpRequestPtr& req,
-              std::function<void(const drogon::HttpResponsePtr&)>&& cb);
+    drogon::AsyncTask list(drogon::HttpRequestPtr req,
+                           std::function<void(const drogon::HttpResponsePtr&)> cb);
 };
 
 } // namespace modules::rbac

@@ -1,8 +1,9 @@
 #pragma once
 //
-// 菜单管理接口：支持平铺列表 / 树 / CRUD。
+// 菜单管理接口：支持平铺列表 / 树 / CRUD。协程版。
 //
 #include <drogon/HttpController.h>
+#include <drogon/utils/coroutine.h>
 
 namespace modules::rbac {
 
@@ -18,18 +19,18 @@ public:
         ADD_METHOD_TO(MenuController::remove, "/api/menus/{id:\\d+}",    drogon::Delete, "filters::AuthFilter", "filters::PermissionFilter");
     METHOD_LIST_END
 
-    void list  (const drogon::HttpRequestPtr& req,
-                std::function<void(const drogon::HttpResponsePtr&)>&& cb);
-    void tree  (const drogon::HttpRequestPtr& req,
-                std::function<void(const drogon::HttpResponsePtr&)>&& cb);
-    void create(const drogon::HttpRequestPtr& req,
-                std::function<void(const drogon::HttpResponsePtr&)>&& cb);
-    void update(const drogon::HttpRequestPtr& req,
-                std::function<void(const drogon::HttpResponsePtr&)>&& cb,
-                int64_t id);
-    void remove(const drogon::HttpRequestPtr& req,
-                std::function<void(const drogon::HttpResponsePtr&)>&& cb,
-                int64_t id);
+    drogon::AsyncTask list  (drogon::HttpRequestPtr req,
+                             std::function<void(const drogon::HttpResponsePtr&)> cb);
+    drogon::AsyncTask tree  (drogon::HttpRequestPtr req,
+                             std::function<void(const drogon::HttpResponsePtr&)> cb);
+    drogon::AsyncTask create(drogon::HttpRequestPtr req,
+                             std::function<void(const drogon::HttpResponsePtr&)> cb);
+    drogon::AsyncTask update(drogon::HttpRequestPtr req,
+                             std::function<void(const drogon::HttpResponsePtr&)> cb,
+                             int64_t id);
+    drogon::AsyncTask remove(drogon::HttpRequestPtr req,
+                             std::function<void(const drogon::HttpResponsePtr&)> cb,
+                             int64_t id);
 };
 
 } // namespace modules::rbac

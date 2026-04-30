@@ -1,10 +1,11 @@
 #pragma once
 //
-// Rbac 业务层 + 用户级别缓存。
+// Rbac 业务层 + 用户级别缓存（协程版）。
 // 管理接口透传给 RbacRepository；热路径（AuthFilter / 登录）使用缓存
 // 避免每次请求打 DB。任何会影响用户权限的写操作都应显式 invalidate。
 //
 #include "RbacRepository.h"
+#include <drogon/utils/coroutine.h>
 #include <mutex>
 #include <unordered_map>
 #include <string>
@@ -25,14 +26,14 @@ public:
     };
 
     // 带缓存的用户权限视图
-    UserCache getUserView(int64_t userId);
+    drogon::Task<UserCache> getUserView(int64_t userId);
 
     // 带缓存的用户菜单树（随权限一起失效）
-    std::vector<dto::MenuDto> getUserMenus(int64_t userId);
+    drogon::Task<std::vector<dto::MenuDto>> getUserMenus(int64_t userId);
 
-    // 用户被分配角色 / 用户被删除 → 调用
+    // 用户被分配角色 / 用户被删除 → 调用（纯内存，同步）
     void invalidateUser(int64_t userId);
-    // 角色权限 / 菜单 发生变动 → 全量失效
+    // 角色权限 / 菜单 发生变动 → 全量失效（纯内存，同步）
     void invalidateAll();
 
 private:

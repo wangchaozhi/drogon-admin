@@ -1,10 +1,11 @@
 #pragma once
 //
 // UserController：承载 /api/users 与 /api/auth 相关 HTTP 路由。
-// Drogon 扫描到 HttpController 派生类会自动注册，无需在 main 里 new。
+// 协程版：所有处理函数返回 drogon::AsyncTask，参数按值传入（co_await 安全）。
 //
 #include "UserService.h"
 #include <drogon/HttpController.h>
+#include <drogon/utils/coroutine.h>
 
 namespace modules::user {
 
@@ -34,38 +35,39 @@ public:
         // 兼容旧路径：POST /api/users 走注册逻辑（公开）
         ADD_METHOD_TO(UserController::registerUser, "/api/users", drogon::Post);
 
-        // 健康检查（公开）
+        // 健康检查（公开，不查 DB，仍为同步）
         ADD_METHOD_TO(UserController::health, "/api/health", drogon::Get);
     METHOD_LIST_END
 
-    void registerUser(const drogon::HttpRequestPtr& req,
-                      std::function<void(const drogon::HttpResponsePtr&)>&& cb);
+    drogon::AsyncTask registerUser(drogon::HttpRequestPtr req,
+                                   std::function<void(const drogon::HttpResponsePtr&)> cb);
 
-    void login(const drogon::HttpRequestPtr& req,
-               std::function<void(const drogon::HttpResponsePtr&)>&& cb);
+    drogon::AsyncTask login(drogon::HttpRequestPtr req,
+                            std::function<void(const drogon::HttpResponsePtr&)> cb);
 
-    void me(const drogon::HttpRequestPtr& req,
-            std::function<void(const drogon::HttpResponsePtr&)>&& cb);
+    drogon::AsyncTask me(drogon::HttpRequestPtr req,
+                         std::function<void(const drogon::HttpResponsePtr&)> cb);
 
-    void list(const drogon::HttpRequestPtr& req,
-              std::function<void(const drogon::HttpResponsePtr&)>&& cb);
+    drogon::AsyncTask list(drogon::HttpRequestPtr req,
+                           std::function<void(const drogon::HttpResponsePtr&)> cb);
 
-    void getById(const drogon::HttpRequestPtr& req,
-                 std::function<void(const drogon::HttpResponsePtr&)>&& cb,
-                 int64_t id);
+    drogon::AsyncTask getById(drogon::HttpRequestPtr req,
+                              std::function<void(const drogon::HttpResponsePtr&)> cb,
+                              int64_t id);
 
-    void remove(const drogon::HttpRequestPtr& req,
-                std::function<void(const drogon::HttpResponsePtr&)>&& cb,
-                int64_t id);
+    drogon::AsyncTask remove(drogon::HttpRequestPtr req,
+                             std::function<void(const drogon::HttpResponsePtr&)> cb,
+                             int64_t id);
 
-    void getRoles(const drogon::HttpRequestPtr& req,
-                  std::function<void(const drogon::HttpResponsePtr&)>&& cb,
-                  int64_t id);
+    drogon::AsyncTask getRoles(drogon::HttpRequestPtr req,
+                               std::function<void(const drogon::HttpResponsePtr&)> cb,
+                               int64_t id);
 
-    void setRoles(const drogon::HttpRequestPtr& req,
-                  std::function<void(const drogon::HttpResponsePtr&)>&& cb,
-                  int64_t id);
+    drogon::AsyncTask setRoles(drogon::HttpRequestPtr req,
+                               std::function<void(const drogon::HttpResponsePtr&)> cb,
+                               int64_t id);
 
+    // 不涉及 DB，保持同步签名
     void health(const drogon::HttpRequestPtr& req,
                 std::function<void(const drogon::HttpResponsePtr&)>&& cb);
 
