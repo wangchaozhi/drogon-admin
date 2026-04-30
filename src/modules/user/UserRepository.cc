@@ -39,8 +39,35 @@ void UserRepository::findById(int64_t id,
         id);
 }
 
+void UserRepository::findByEmail(const std::string& email,
+                                 std::function<void(std::optional<UserRecord>)> onOk,
+                                 DbErrCb onErr) {
+    auto client = db();
+    if (!client) { onErr("db client unavailable"); return; }
+
+    client->execSqlAsync(
+        "SELECT id,name,email,password_hash,created_at FROM users WHERE email=?",
+        [onOk = std::move(onOk)](const drogon::orm::Result& r) {
+            if (r.empty()) { onOk(std::nullopt); return; }
+            const auto& row = r[0];
+            UserRecord rec;
+            rec.user.id        = row["id"].as<int64_t>();
+            rec.user.name      = row["name"].as<std::string>();
+            rec.user.email     = row["email"].as<std::string>();
+            rec.user.createdAt = row["created_at"].as<int64_t>();
+            rec.passwordHash   = row["password_hash"].as<std::string>();
+            onOk(std::move(rec));
+        },
+        [onErr = std::move(onErr)](const drogon::orm::DrogonDbException& e) {
+            APP_LOG_ERROR << "findByEmail failed: " << e.base().what();
+            onErr(e.base().what());
+        },
+        email);
+}
+
 void UserRepository::insert(const std::string& name,
                             const std::string& email,
+                            const std::string& passwordHash,
                             std::function<void(dto::UserDto)> onOk,
                             DbErrCb onErr) {
     auto client = db();
@@ -49,7 +76,7 @@ void UserRepository::insert(const std::string& name,
     int64_t now = common::TimeUtil::nowSec();
 
     client->execSqlAsync(
-        "INSERT INTO users(name,email,created_at) VALUES(?,?,?)",
+        "INSERT INTO users(name,email,password_hash,created_at) VALUES(?,?,?,?)",
         [onOk = std::move(onOk), name, email, now](const drogon::orm::Result& r) {
             dto::UserDto u;
             u.id        = r.insertId();
@@ -62,7 +89,7 @@ void UserRepository::insert(const std::string& name,
             APP_LOG_ERROR << "insert user failed: " << e.base().what();
             onErr(e.base().what());
         },
-        name, email, now);
+        name, email, passwordHash, now);
 }
 
 } // namespace modules::user

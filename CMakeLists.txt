@@ -11,6 +11,7 @@ if(MSVC)
 endif()
 
 find_package(Drogon CONFIG REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 # 收集各层源码，保持模块化扩展的零配置
 file(GLOB_RECURSE CORE_SRC     CONFIGURE_DEPENDS src/core/*.cc    src/core/*.cpp)
@@ -29,7 +30,7 @@ add_executable(c_web
 )
 
 target_include_directories(c_web PRIVATE src)
-target_link_libraries(c_web PRIVATE Drogon::Drogon)
+target_link_libraries(c_web PRIVATE Drogon::Drogon OpenSSL::SSL OpenSSL::Crypto)
 
 # 拷贝运行配置到输出目录，方便 run-in-place
 add_custom_command(TARGET c_web POST_BUILD

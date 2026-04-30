@@ -14,6 +14,12 @@ namespace modules::user {
 
 using DbErrCb = std::function<void(const std::string& /*errMsg*/)>;
 
+// 带密码哈希的用户记录（仅服务端内部使用，不对外暴露）
+struct UserRecord {
+    dto::UserDto user;
+    std::string  passwordHash;
+};
+
 class UserRepository {
 public:
     UserRepository();
@@ -23,9 +29,15 @@ public:
                   std::function<void(std::optional<dto::UserDto>)> onOk,
                   DbErrCb onErr);
 
+    // 按邮箱查（登录用），返回含密码哈希的完整记录
+    void findByEmail(const std::string& email,
+                     std::function<void(std::optional<UserRecord>)> onOk,
+                     DbErrCb onErr);
+
     // 插入：成功回调返回含自增 id 的 UserDto
     void insert(const std::string& name,
                 const std::string& email,
+                const std::string& passwordHash,
                 std::function<void(dto::UserDto)> onOk,
                 DbErrCb onErr);
 
