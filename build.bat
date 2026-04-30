@@ -52,13 +52,13 @@ if errorlevel 1 (
     )
 )
 
-"%VCPKG_ROOT%\vcpkg.exe" install --triplet x64-windows
+"%VCPKG_ROOT%\vcpkg.exe" install --triplet x64-windows-static-md
 if errorlevel 1 exit /b 1
 
 echo [2/3] Configuring CMake...
 cmake -B build -S . -A x64 ^
     -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake ^
-    -DVCPKG_TARGET_TRIPLET=x64-windows
+    -DVCPKG_TARGET_TRIPLET=x64-windows-static-md
 if errorlevel 1 exit /b 1
 
 echo [3/3] Building Release...

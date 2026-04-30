@@ -68,6 +68,8 @@ build_vs.bat
 
 构建产物：`build\Release\c_web.exe`，`config\` 会自动拷贝到输出目录旁。
 
+> Windows 侧采用 `x64-windows-static-md` triplet：vcpkg 的第三方依赖（Drogon / OpenSSL / jsoncpp / zlib / sqlite3 等）静态链接进 `c_web.exe`，CRT 仍为动态（`/MD`）。因此产物在装有 VC++ Runtime 的 Win10/11 机器上可直接运行，无需随附一堆 DLL。
+
 运行：
 
 ```bat

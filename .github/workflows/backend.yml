@@ -33,9 +33,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Windows MSVC (x64)
+          - name: Windows MSVC (x64, static-md)
             os: windows-2022
-            triplet: x64-windows
+            triplet: x64-windows-static-md
             artifact: c_web-windows-x64
             exe_path: build/Release/c_web.exe
             cfg_path: build/Release/config
