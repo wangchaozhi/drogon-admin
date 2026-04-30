@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ["20", "22"]
+        node: ["24"]
 
     steps:
       - name: Checkout
@@ -47,7 +47,7 @@ jobs:
         run: npm run build
 
       - name: Upload dist artifact
-        if: matrix.node == '20'
+        if: matrix.node == '24'
         uses: actions/upload-artifact@v4
         with:
           name: front-dist
