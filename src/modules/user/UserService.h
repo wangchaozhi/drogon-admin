@@ -28,7 +28,8 @@ public:
                  std::function<void(std::optional<dto::UserDto>)> onOk,
                  DbErrCb onErr);
 
-    // 注册：写入前对密码做哈希；成功后按超管邮箱或默认绑定 user 角色
+    // 注册：写入前对密码做哈希；成功后自动绑定角色——
+    // 系统首个用户晋升 admin，超管邮箱同样 admin，其余为普通 user
     void create(const dto::CreateUserReq& req,
                 std::function<void(dto::UserDto)> onOk,
                 DbErrCb onErr);

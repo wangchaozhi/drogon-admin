@@ -53,7 +53,25 @@ if errorlevel 1 (
 )
 
 echo [2/2] Configuring and building (vcpkg manifest mode, overlay triplets)...
-cmake -B build -S . -A x64 ^
+
+REM ---------------------------------------------------------------------
+REM  Pin MSVC toolset to the LATEST version installed, because vcpkg uses
+REM  vswhere to pick the newest MSVC when building deps (e.g. 14.44), while
+REM  the plain vcvars64.bat default toolset can be older (e.g. 14.38). A
+REM  mismatch causes LNK2019 on new STL symbols (__std_find_last_trivial_1,
+REM  __std_search_1, __std_find_end_1, _Cnd_timedwait_for_unchecked, ...).
+REM ---------------------------------------------------------------------
+set "LATEST_VCTOOLS=%VCToolsVersion%"
+if defined VCINSTALLDIR (
+    for /f "delims=" %%v in ('dir /b /ad /on "%VCINSTALLDIR%Tools\MSVC" 2^>nul') do set "LATEST_VCTOOLS=%%v"
+)
+set "TOOLSET_ARG="
+if defined LATEST_VCTOOLS (
+    set "TOOLSET_ARG=-T version=%LATEST_VCTOOLS%"
+    echo [INFO] Using MSVC toolset version %LATEST_VCTOOLS%
+)
+
+cmake -B build -S . -A x64 %TOOLSET_ARG% ^
     -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake ^
     -DVCPKG_TARGET_TRIPLET=x64-windows-static-md ^
     -DVCPKG_OVERLAY_TRIPLETS=%CD%\triplets

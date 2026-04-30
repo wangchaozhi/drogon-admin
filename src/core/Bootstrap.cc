@@ -2,10 +2,17 @@
 #include "Logger.h"
 #include <drogon/drogon.h>
 #include <drogon/orm/DbClient.h>
+#include <trantor/utils/AsyncFileLogger.h>
+#include <trantor/utils/Logger.h>
+#include <condition_variable>
+#include <cstdio>
+#include <deque>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <sstream>
 #include <string>
+#include <thread>
 
 namespace core {
 
@@ -73,8 +80,16 @@ void ensureDbDirAndSchema() {
             try {
                 db->execSqlSync(s);
             } catch (const std::exception& e) {
-                APP_LOG_ERROR << "schema stmt failed: " << e.what()
-                              << " | sql=" << s;
+                // 幂等迁移：列/表/索引已存在属于预期，无需 ERROR 噪音
+                std::string msg = e.what();
+                auto isBenign = msg.find("duplicate column name") != std::string::npos
+                             || msg.find("already exists") != std::string::npos;
+                if (isBenign) {
+                    APP_LOG_DEBUG << "schema stmt skipped (already applied): " << msg;
+                } else {
+                    APP_LOG_ERROR << "schema stmt failed: " << msg
+                                  << " | sql=" << s;
+                }
             }
         }
         APP_LOG_INFO << "schema.sql applied, statements=" << stmts.size();
@@ -82,6 +97,96 @@ void ensureDbDirAndSchema() {
 }
 
 } // namespace
+
+// 进程级别的异步文件日志器，生命周期与进程一致
+static trantor::AsyncFileLogger& getAsyncFileLogger() {
+    static trantor::AsyncFileLogger logger;
+    return logger;
+}
+
+// 异步控制台输出管道：
+//  - 业务线程仅入队（O(1) 拷贝 + 全局锁），不直接 fwrite(stdout)；
+//  - 后台线程批量刷 stdout，Windows 下即使用户开启了 QuickEdit
+//    "选定"阻塞了控制台写入，阻塞的也只是消费线程，不会拖住 HTTP 线程。
+class AsyncConsoleSink {
+public:
+    static AsyncConsoleSink& instance() {
+        static AsyncConsoleSink s;
+        return s;
+    }
+
+    void push(const char* msg, uint64_t len) {
+        {
+            std::lock_guard<std::mutex> lk(mu_);
+            // 背压保护：队列堆积过多时丢弃最旧日志，避免内存无限膨胀
+            if (queued_bytes_ > kMaxQueueBytes) {
+                while (!queue_.empty() && queued_bytes_ > kMaxQueueBytes / 2) {
+                    queued_bytes_ -= queue_.front().size();
+                    queue_.pop_front();
+                }
+            }
+            queue_.emplace_back(msg, msg + len);
+            queued_bytes_ += static_cast<size_t>(len);
+        }
+        cv_.notify_one();
+    }
+
+    void flush() {
+        cv_.notify_one();
+    }
+
+private:
+    AsyncConsoleSink() {
+        worker_ = std::thread([this] { loop(); });
+        worker_.detach();   // 随进程退出，不阻塞 shutdown
+    }
+
+    void loop() {
+        std::deque<std::string> local;
+        for (;;) {
+            {
+                std::unique_lock<std::mutex> lk(mu_);
+                cv_.wait(lk, [this] { return !queue_.empty(); });
+                local.swap(queue_);
+                queued_bytes_ = 0;
+            }
+            for (auto& s : local) {
+                std::fwrite(s.data(), 1, s.size(), stdout);
+            }
+            local.clear();
+            std::fflush(stdout);
+        }
+    }
+
+    std::mutex              mu_;
+    std::condition_variable cv_;
+    std::deque<std::string> queue_;
+    size_t                  queued_bytes_{0};
+    std::thread             worker_;
+    static constexpr size_t kMaxQueueBytes = 32 * 1024 * 1024; // 32 MB
+};
+
+// 让日志同时输出到控制台与文件（双路均为异步）
+static void setupDualLogging() {
+    auto& fileLogger = getAsyncFileLogger();
+    fileLogger.setFileName("c_web", ".log", "./logs");
+    fileLogger.setFileSizeLimit(100 * 1000 * 1000);
+    fileLogger.startLogging();
+
+    // 预先触发 AsyncConsoleSink 初始化，启动后台线程
+    AsyncConsoleSink::instance();
+
+    trantor::Logger::setOutputFunction(
+        [](const char* msg, uint64_t len) {
+            // 文件日志本身异步；控制台输出经由 AsyncConsoleSink 也成为异步
+            getAsyncFileLogger().output(msg, len);
+            AsyncConsoleSink::instance().push(msg, len);
+        },
+        []() {
+            getAsyncFileLogger().flush();
+            AsyncConsoleSink::instance().flush();
+        });
+}
 
 void Bootstrap::init(const std::string& configPath) {
     // 先确保配置中引用的相对目录存在，否则 Drogon 会因 "Log path does not exist" 退出
@@ -94,6 +199,10 @@ void Bootstrap::init(const std::string& configPath) {
 
     auto& app = drogon::app();
     app.loadConfigFile(configPath);
+
+    // config.json 已把 log_path 置空，避免 Drogon 再装一次 file logger；
+    // 这里统一装配 "控制台 + 文件" 的双输出。
+    setupDualLogging();
 
     ensureDbDirAndSchema();
 

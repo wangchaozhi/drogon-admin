@@ -23,11 +23,37 @@ std::string superAdminEmail() {
     return cfg ? cfg->superAdminEmail() : std::string("admin@c_web.local");
 }
 
-// 注册成功后自动绑定角色：超管邮箱 → admin(id=1)，其他 → user(id=2)
+// 注册时刻 users 表是否"此前为空"：
+// 当前这条新记录已经写入，所以总数 <= 1 即表示此前没有任何用户
+bool isFirstRegisteredUser() {
+    try {
+        auto db = drogon::app().getDbClient();
+        if (!db) return false;  // 拿不到 DbClient 时保守处理，不提升权限
+        auto r = db->execSqlSync("SELECT COUNT(*) AS c FROM users");
+        if (r.empty()) return false;
+        return r[0]["c"].as<int64_t>() <= 1;
+    } catch (const std::exception& e) {
+        APP_LOG_ERROR << "isFirstRegisteredUser check failed: " << e.what();
+        return false;  // 查询异常时不提升，避免误授权
+    }
+}
+
+// 注册成功后自动绑定角色：
+// 1) 注册时 users 表此前为空 → 当前用户即首个管理员 (id=1)
+// 2) 配置中的超管邮箱 → admin (id=1)
+// 3) 其他 → 普通用户 (id=2)
 void assignDefaultRole(int64_t userId, const std::string& email) {
     auto& svc = rbac::RbacService::instance();
     try {
-        int64_t roleId = (email == superAdminEmail()) ? 1 : 2;
+        bool isFirstAdmin = isFirstRegisteredUser();
+        int64_t roleId = 2;
+        if (isFirstAdmin) {
+            roleId = 1;
+            APP_LOG_INFO << "first registered user promoted to admin uid=" << userId
+                         << " email=" << email;
+        } else if (email == superAdminEmail()) {
+            roleId = 1;
+        }
         auto current = svc.repo().getUserRoleIds(userId);
         if (std::find(current.begin(), current.end(), roleId) == current.end()) {
             current.push_back(roleId);
