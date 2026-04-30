@@ -25,6 +25,9 @@ jobs:
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    # 允许 matrix 中标记为 experimental 的 job 失败而不影响整条流水线（主要用于 arm64-osx，
+    # vcpkg 当前 baseline 下 openssl 在该平台存在已知构建问题，等后续升级 baseline 后移除）。
+    continue-on-error: ${{ matrix.experimental || false }}
 
     strategy:
       fail-fast: false
@@ -37,6 +40,7 @@ jobs:
             exe_path: build/Release/c_web.exe
             cfg_path: build/Release/config
             sql_path: build/Release/sql
+            experimental: false
           - name: Ubuntu 22.04 GCC (x64)
             os: ubuntu-22.04
             triplet: x64-linux
@@ -44,13 +48,15 @@ jobs:
             exe_path: build/c_web
             cfg_path: build/config
             sql_path: build/sql
-          - name: macOS Latest Clang (arm64)
+            experimental: false
+          - name: macOS Latest Clang (arm64) [experimental]
             os: macos-latest
             triplet: arm64-osx
             artifact: c_web-macos-arm64
             exe_path: build/c_web
             cfg_path: build/config
             sql_path: build/sql
+            experimental: true
 
     env:
       # 使用 GitHub Actions 自带缓存作为 vcpkg 二进制缓存，避免每次重编 Drogon
