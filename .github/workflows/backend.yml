@@ -1,25 +1,27 @@
 name: backend
 
 on:
+  # 推送 tag（如 v1.2.3）时自动构建三平台产物并发布到 GitHub Release
   push:
-    branches: [main]
-    paths:
-      - "src/**"
-      - "CMakeLists.txt"
-      - "vcpkg.json"
-      - "config/**"
-      - "sql/**"
-      - ".github/workflows/backend.yml"
+    tags:
+      - "v*"
+  # 保留 PR 质量门：面向 main 的 PR 涉及后端相关路径时仍自动验证构建
   pull_request:
     branches: [main]
     paths:
       - "src/**"
       - "CMakeLists.txt"
       - "vcpkg.json"
+      - "triplets/**"
       - "config/**"
       - "sql/**"
       - ".github/workflows/backend.yml"
+  # main 分支的构建全部改为手动触发
   workflow_dispatch:
+
+# tag 触发时需要写仓库内容以创建 Release 并上传资产
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -40,6 +42,7 @@ jobs:
             exe_path: build/Release/c_web.exe
             cfg_path: build/Release/config
             sql_path: build/Release/sql
+            asset_suffix: windows-x64.zip
             experimental: false
           - name: Ubuntu 22.04 GCC (x64)
             os: ubuntu-22.04
@@ -48,6 +51,7 @@ jobs:
             exe_path: build/c_web
             cfg_path: build/config
             sql_path: build/sql
+            asset_suffix: ubuntu22-x64.tar.gz
             experimental: false
           - name: macOS Latest Clang (arm64) [experimental]
             os: macos-latest
@@ -56,6 +60,7 @@ jobs:
             exe_path: build/c_web
             cfg_path: build/config
             sql_path: build/sql
+            asset_suffix: macos-arm64.tar.gz
             experimental: true
 
     env:
@@ -155,8 +160,8 @@ jobs:
         shell: bash
         run: cmake --build build -j
 
-      # ---------- 产物 ----------
-      - name: Upload executable
+      # ---------- 产物（所有触发都上传到 workflow artifact，便于 PR/手动下载）----------
+      - name: Upload executable (workflow artifact)
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
@@ -166,3 +171,39 @@ jobs:
             ${{ matrix.sql_path }}/**
           if-no-files-found: error
           retention-days: 7
+
+      # ---------- 以下仅在 tag 触发时执行：打包并上传到 Release ----------
+      - name: Package release asset (Windows)
+        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $asset = "c_web-${{ github.ref_name }}-${{ matrix.asset_suffix }}"
+          $staging = "release-stage"
+          New-Item -ItemType Directory -Force -Path $staging | Out-Null
+          Copy-Item "${{ matrix.exe_path }}" "$staging/"
+          Copy-Item "${{ matrix.cfg_path }}" "$staging/" -Recurse
+          Copy-Item "${{ matrix.sql_path }}" "$staging/" -Recurse
+          Compress-Archive -Path "$staging/*" -DestinationPath $asset -Force
+          "ASSET_PATH=$asset" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Package release asset (Unix)
+        if: runner.os != 'Windows' && startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          asset="c_web-${{ github.ref_name }}-${{ matrix.asset_suffix }}"
+          staging="release-stage"
+          mkdir -p "$staging"
+          cp "${{ matrix.exe_path }}" "$staging/"
+          cp -R "${{ matrix.cfg_path }}" "$staging/"
+          cp -R "${{ matrix.sql_path }}" "$staging/"
+          tar -czf "$asset" -C "$staging" .
+          echo "ASSET_PATH=$asset" >> "$GITHUB_ENV"
+
+      - name: Upload to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ASSET_PATH }}
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}

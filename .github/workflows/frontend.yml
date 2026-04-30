@@ -1,17 +1,22 @@
 name: frontend
 
 on:
+  # 推送 tag（如 v1.2.3）时自动构建前端并把压缩包发布到 GitHub Release
   push:
-    branches: [main]
-    paths:
-      - "front/**"
-      - ".github/workflows/frontend.yml"
+    tags:
+      - "v*"
+  # 保留 PR 质量门：面向 main 的 PR 涉及前端相关路径时仍自动验证构建
   pull_request:
     branches: [main]
     paths:
       - "front/**"
       - ".github/workflows/frontend.yml"
+  # main 分支的构建全部改为手动触发
   workflow_dispatch:
+
+# tag 触发时需要写仓库内容以创建 Release 并上传资产
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -53,7 +58,7 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Upload dist artifact
+      - name: Upload dist artifact (workflow artifact)
         if: matrix.node == '24'
         uses: actions/upload-artifact@v4
         with:
@@ -61,3 +66,23 @@ jobs:
           path: front/dist
           if-no-files-found: error
           retention-days: 7
+
+      # ---------- 以下仅在 tag 触发时执行：打包并上传到 Release ----------
+      - name: Package release asset
+        if: startsWith(github.ref, 'refs/tags/')
+        # 覆盖 defaults.run.working-directory 为仓库根，避免 front 下相对路径混乱
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          asset="c_web-front-${{ github.ref_name }}.zip"
+          (cd front/dist && zip -r "$GITHUB_WORKSPACE/$asset" .)
+          echo "ASSET_PATH=$asset" >> "$GITHUB_ENV"
+
+      - name: Upload to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ASSET_PATH }}
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
