@@ -41,7 +41,10 @@ jobs:
           cache-dependency-path: front/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        # 说明：lockfile 在 Windows 生成时不包含 Linux 专用的 optional 依赖
+        # （如 @emnapi/core、@emnapi/runtime），导致 `npm ci` 因不同步而失败。
+        # 这里改用 `npm install`，并通过 --prefer-offline 最大化利用缓存。
+        run: npm install --no-audit --no-fund --prefer-offline
 
       - name: Lint
         run: npm run lint
