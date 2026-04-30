@@ -1,2 +1,9 @@
-// 兼容旧导入路径：统一从 AuthContext 导出 useAuth。
-export { useAuth } from '../context/AuthContext'
+import { useContext } from 'react'
+import { AuthContext } from '../context/AuthContext'
+import type { AuthValue } from '../context/AuthContext'
+
+export function useAuth(): AuthValue {
+  const ctx = useContext(AuthContext)
+  if (!ctx) throw new Error('useAuth must be used within <AuthProvider>')
+  return ctx
+}

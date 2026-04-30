@@ -13,11 +13,10 @@ export default function HomePage() {
   const { user, logout } = useAuth()
   const { isMobile, isDesktop } = useDevice()
   const [me, setMe] = useState<User | null>(user)
-  const [refreshing, setRefreshing] = useState(false)
+  const [refreshing, setRefreshing] = useState(true)
   const { message } = AntApp.useApp()
 
   useEffect(() => {
-    setRefreshing(true)
     api.me()
       .then((r) => { if (r.data) setMe(r.data) })
       .catch((e) => message.error('拉取用户信息失败: ' + (e instanceof Error ? e.message : String(e))))

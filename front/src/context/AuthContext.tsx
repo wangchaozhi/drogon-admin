@@ -1,8 +1,8 @@
 // AuthContext：把登录态提升到 Provider，避免多个组件各自持有独立 state。
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useEffect, useState, type ReactNode } from 'react'
 import { api, auth, type LoginData, type User } from '../api'
 
-type AuthValue = {
+export type AuthValue = {
   user: User | null
   loading: boolean
   login: (email: string, password: string) => Promise<LoginData>
@@ -10,7 +10,8 @@ type AuthValue = {
   refresh: () => Promise<void>
 }
 
-const AuthContext = createContext<AuthValue | null>(null)
+// eslint-disable-next-line react-refresh/only-export-components
+export const AuthContext = createContext<AuthValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => auth.getUser())
@@ -18,7 +19,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // 首次挂载：如果本地有 token，校验并拉取最新 user
   useEffect(() => {
-    if (!auth.getToken()) { setLoading(false); return }
+    if (!auth.getToken()) return
     api.me()
       .then((r) => { if (r.data) setUser(r.data) })
       .catch(() => { auth.clear(); setUser(null) })
@@ -54,10 +55,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {children}
     </AuthContext.Provider>
   )
-}
-
-export function useAuth(): AuthValue {
-  const ctx = useContext(AuthContext)
-  if (!ctx) throw new Error('useAuth must be used within <AuthProvider>')
-  return ctx
 }
