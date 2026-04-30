@@ -22,14 +22,40 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-windows:
-    name: Windows MSVC + vcpkg
-    runs-on: windows-2022
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows MSVC (x64)
+            os: windows-2022
+            triplet: x64-windows
+            artifact: c_web-windows-x64
+            exe_path: build/Release/c_web.exe
+            cfg_path: build/Release/config
+            sql_path: build/Release/sql
+          - name: Ubuntu 22.04 GCC (x64)
+            os: ubuntu-22.04
+            triplet: x64-linux
+            artifact: c_web-ubuntu22-x64
+            exe_path: build/c_web
+            cfg_path: build/config
+            sql_path: build/sql
+          - name: macOS Latest Clang (arm64)
+            os: macos-latest
+            triplet: arm64-osx
+            artifact: c_web-macos-arm64
+            exe_path: build/c_web
+            cfg_path: build/config
+            sql_path: build/sql
 
     env:
       # 使用 GitHub Actions 自带缓存作为 vcpkg 二进制缓存，避免每次重编 Drogon
       VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
-      VCPKG_DEFAULT_TRIPLET: x64-windows
+      VCPKG_DEFAULT_TRIPLET: ${{ matrix.triplet }}
 
     steps:
       - name: Checkout
@@ -42,12 +68,32 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
+      # ---------- 平台相关系统依赖 ----------
+      - name: Install system deps (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential ninja-build pkg-config \
+            zip unzip tar curl git \
+            autoconf automake libtool \
+            libssl-dev
+
+      - name: Install system deps (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew update
+          brew install ninja pkg-config autoconf automake libtool
+
       - name: Setup MSVC dev environment
+        if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
 
-      - name: Bootstrap vcpkg (pinned to builtin-baseline)
+      # ---------- Bootstrap vcpkg（固定到 vcpkg.json 的 builtin-baseline）----------
+      - name: Bootstrap vcpkg (Windows)
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $baseline = (Get-Content vcpkg.json -Raw | ConvertFrom-Json).'builtin-baseline'
@@ -59,24 +105,56 @@ jobs:
           "VCPKG_ROOT=$env:RUNNER_TEMP\vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
           "$env:RUNNER_TEMP\vcpkg"            | Out-File -FilePath $env:GITHUB_PATH -Append
 
-      - name: CMake configure
+      - name: Bootstrap vcpkg (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          baseline=$(python3 -c "import json; print(json.load(open('vcpkg.json'))['builtin-baseline'])")
+          if [ -z "$baseline" ]; then echo "vcpkg.json missing builtin-baseline" >&2; exit 1; fi
+          echo "Using vcpkg baseline: $baseline"
+          git clone https://github.com/microsoft/vcpkg.git "$RUNNER_TEMP/vcpkg"
+          git -C "$RUNNER_TEMP/vcpkg" checkout "$baseline"
+          "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/vcpkg"           >> "$GITHUB_PATH"
+
+      # ---------- CMake 配置 ----------
+      - name: CMake configure (Windows)
+        if: runner.os == 'Windows'
         shell: cmd
         run: |
           cmake -B build -S . -A x64 ^
             -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake ^
-            -DVCPKG_TARGET_TRIPLET=x64-windows
+            -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}
 
-      - name: CMake build (Release)
+      - name: CMake configure (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cmake -B build -S . -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}
+
+      # ---------- 构建 ----------
+      - name: CMake build (Windows)
+        if: runner.os == 'Windows'
         shell: cmd
         run: cmake --build build --config Release -j
 
+      - name: CMake build (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: cmake --build build -j
+
+      # ---------- 产物 ----------
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
-          name: c_web-windows-x64
+          name: ${{ matrix.artifact }}
           path: |
-            build/Release/c_web.exe
-            build/Release/config/**
-            build/Release/sql/**
+            ${{ matrix.exe_path }}
+            ${{ matrix.cfg_path }}/**
+            ${{ matrix.sql_path }}/**
           if-no-files-found: error
           retention-days: 7
