@@ -11,8 +11,11 @@ void ConfigPlugin::initAndStart(const Json::Value& /*pluginCfg*/) {
         jwtSecret_ = custom["jwt_secret"].asString();
     if (custom.isMember("jwt_expire_seconds"))
         jwtExpireSec_ = custom["jwt_expire_seconds"].asInt();
+    if (custom.isMember("super_admin_email"))
+        superAdminEmail_ = custom["super_admin_email"].asString();
 
-    APP_LOG_INFO << "ConfigPlugin loaded, jwtExpireSec=" << jwtExpireSec_;
+    APP_LOG_INFO << "ConfigPlugin loaded, jwtExpireSec=" << jwtExpireSec_
+                 << ", superAdmin=" << superAdminEmail_;
 }
 
 void ConfigPlugin::shutdown() {

@@ -92,4 +92,62 @@ void UserRepository::insert(const std::string& name,
         name, email, passwordHash, now);
 }
 
+UserRepository::PageResult
+UserRepository::listPagedSync(int page, int pageSize, const std::string& keyword) {
+    if (page < 1) page = 1;
+    if (pageSize < 1) pageSize = 10;
+    if (pageSize > 200) pageSize = 200;
+    int offset = (page - 1) * pageSize;
+
+    auto client = db();
+    PageResult out;
+    if (!client) return out;
+
+    std::string like = "%" + keyword + "%";
+    if (keyword.empty()) {
+        auto r = client->execSqlSync(
+            "SELECT id,name,email,created_at FROM users "
+            "ORDER BY id DESC LIMIT ? OFFSET ?",
+            pageSize, offset);
+        for (const auto& row : r) {
+            dto::UserDto u;
+            u.id        = row["id"].as<int64_t>();
+            u.name      = row["name"].as<std::string>();
+            u.email     = row["email"].as<std::string>();
+            u.createdAt = row["created_at"].as<int64_t>();
+            out.items.push_back(std::move(u));
+        }
+        auto rc = client->execSqlSync("SELECT COUNT(*) AS c FROM users");
+        if (!rc.empty()) out.total = rc[0]["c"].as<int64_t>();
+    } else {
+        auto r = client->execSqlSync(
+            "SELECT id,name,email,created_at FROM users "
+            "WHERE name LIKE ? OR email LIKE ? "
+            "ORDER BY id DESC LIMIT ? OFFSET ?",
+            like, like, pageSize, offset);
+        for (const auto& row : r) {
+            dto::UserDto u;
+            u.id        = row["id"].as<int64_t>();
+            u.name      = row["name"].as<std::string>();
+            u.email     = row["email"].as<std::string>();
+            u.createdAt = row["created_at"].as<int64_t>();
+            out.items.push_back(std::move(u));
+        }
+        auto rc = client->execSqlSync(
+            "SELECT COUNT(*) AS c FROM users WHERE name LIKE ? OR email LIKE ?",
+            like, like);
+        if (!rc.empty()) out.total = rc[0]["c"].as<int64_t>();
+    }
+    return out;
+}
+
+bool UserRepository::deleteByIdSync(int64_t id) {
+    auto client = db();
+    if (!client) return false;
+    // 一并清理用户-角色关联
+    client->execSqlSync("DELETE FROM user_roles WHERE user_id=?", id);
+    auto r = client->execSqlSync("DELETE FROM users WHERE id=?", id);
+    return r.affectedRows() > 0;
+}
+
 } // namespace modules::user

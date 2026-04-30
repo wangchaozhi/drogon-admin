@@ -47,6 +47,7 @@
     ],
     "custom_config": {
         "jwt_secret": "change-me-in-production",
-        "jwt_expire_seconds": 7200
+        "jwt_expire_seconds": 7200,
+        "super_admin_email": "admin@c_web.local"
     }
 }

@@ -3,6 +3,7 @@
 #include "core/Logger.h"
 #include "common/JwtUtil.h"
 #include "plugins/ConfigPlugin.h"
+#include "modules/rbac/RbacService.h"
 #include <drogon/drogon.h>
 
 namespace filters {
@@ -29,10 +30,24 @@ void AuthFilter::doFilter(const drogon::HttpRequestPtr& req,
         return;
     }
 
-    // 把解析结果放进 attributes，供 Controller 读取
+    // 基础字段
     auto attrs = req->attributes();
     attrs->insert("userId", payload->userId);
     attrs->insert("email",  payload->email);
+
+    // RBAC 权限视图（带缓存，首次冷加载才打 DB）
+    try {
+        auto view = modules::rbac::RbacService::instance().getUserView(payload->userId);
+        attrs->insert("roles",          view.roles);
+        attrs->insert("permissions",    view.perms);
+        attrs->insert("permissionsStr", view.permsStr);
+    } catch (const std::exception& e) {
+        APP_LOG_ERROR << "load rbac view failed uid=" << payload->userId
+                      << " err=" << e.what();
+        fcb(core::Result::fail(5004, "load permissions failed",
+                               drogon::k500InternalServerError));
+        return;
+    }
 
     fccb();
 }

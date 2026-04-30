@@ -18,10 +18,12 @@ public:
 
     const std::string& jwtSecret() const { return jwtSecret_; }
     int jwtExpireSeconds() const { return jwtExpireSec_; }
+    const std::string& superAdminEmail() const { return superAdminEmail_; }
 
 private:
     std::string jwtSecret_{"change-me"};
     int jwtExpireSec_{7200};
+    std::string superAdminEmail_{"admin@c_web.local"};
 };
 
 } // namespace plugins

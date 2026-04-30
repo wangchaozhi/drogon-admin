@@ -31,23 +31,32 @@ c_web/
 │   ├── main.cc                 # 入口，薄薄一层
 │   ├── core/                   # 框架层：Bootstrap / Result / Logger
 │   ├── common/                 # 通用工具：TimeUtil / CryptoUtil / JwtUtil
-│   ├── filters/                # 横切过滤器：AuthFilter / CorsFilter
+│   ├── filters/                # 横切过滤器：AuthFilter / CorsFilter / PermissionFilter / PermissionRegistry
 │   ├── plugins/                # 全局单例：ConfigPlugin
 │   └── modules/                # 业务模块（自治）
-│       └── user/
-│           ├── UserController  # HTTP 路由（/api/auth/* 与 /api/users/*）
-│           ├── UserService     # 业务逻辑（异步）
-│           ├── UserRepository  # 数据访问（SQLite 异步）
-│           └── dto/            # 请求 / 响应 DTO（LoginReq / CreateUserReq ...）
-├── front/                      # 前端（React 19 + Vite + Ant Design 6）
+│       ├── user/
+│       │   ├── UserController  # HTTP 路由（/api/auth/* 与 /api/users/*）
+│       │   ├── UserService     # 业务逻辑（异步）
+│       │   ├── UserRepository  # 数据访问（SQLite 异步）
+│       │   └── dto/            # 请求 / 响应 DTO（LoginReq / CreateUserReq ...）
+│       └── rbac/
+│           ├── RoleController      # 角色管理（/api/roles/*）
+│           ├── MenuController      # 菜单管理（/api/menus/*）
+│           ├── PermissionController# 权限列表（/api/permissions）
+│           ├── RbacService         # RBAC 业务逻辑
+│           ├── RbacRepository      # RBAC 数据访问
+│           └── dto/                # RBAC DTO
+├── front/                      # 前端（React 19 + Vite + Ant Design 6 + React Router）
 │   └── src/
-│       ├── pages/              # 页面：auth / home + AppRoutes
-│       ├── components/         # 通用组件：AppHeader
+│       ├── pages/              # 页面：login / dashboard / profile / admin（users/roles/menus）/ error
+│       ├── layouts/            # AdminLayout（侧边栏 + 顶部栏）
+│       ├── routes/             # 基于权限的嵌套路由（ProtectedRoute）
+│       ├── components/         # AppHeader / DynamicMenu / HasPerm
+│       ├── api/                # 模块化 API 封装（auth / user / role / menu / permission）
 │       ├── context/            # AuthContext
 │       ├── hooks/              # useAuth / useDevice（响应式三端适配）
 │       ├── theme/              # Ant Design 主题定制
-│       ├── utils/              # remember 等工具
-│       └── api.ts              # 前端 API 封装
+│       └── utils/              # remember 等工具
 ├── config/config.json          # Drogon 运行配置（含 db_clients / jwt_secret）
 ├── sql/schema.sql              # 启动时自动应用的建表脚本
 ├── data/                       # SQLite 数据库文件目录（运行时自动创建）
@@ -105,18 +114,30 @@ npm run build        REM 生产构建，产物在 front/dist
 npm run preview      REM 预览生产构建
 ```
 
-前端通过 `src/api.ts` 统一调用后端 `http://127.0.0.1:8080/api/*` 接口，登录成功后 JWT 写入本地并由 `AuthContext` 全局维护。
+前端通过 `src/api/` 下的模块统一调用后端 `http://127.0.0.1:8080/api/*` 接口，登录成功后 JWT 写入本地并由 `AuthContext` 全局维护。路由层面通过 `ProtectedRoute` 做鉴权与权限拦截，无权限时自动跳转到 `/403`。
 
 ## 默认接口
 
-| Method | Path                | 鉴权 | 说明                    |
-|--------|---------------------|------|-------------------------|
-| GET    | /api/health         | 否   | 健康检查                |
-| POST   | /api/auth/register  | 否   | 注册账号（JSON body）   |
-| POST   | /api/auth/login     | 否   | 登录，返回 JWT          |
-| GET    | /api/users/me       | 是   | 获取当前登录用户        |
-| GET    | /api/users/{id}     | 是   | 按 id 查询用户          |
-| POST   | /api/users          | 否   | 兼容旧路径，等价于注册  |
+| Method | Path                               | 鉴权 | 权限要求     | 说明                    |
+|--------|------------------------------------|------|--------------|-------------------------|
+| GET    | /api/health                        | 否   | —            | 健康检查                |
+| POST   | /api/auth/register                 | 否   | —            | 注册账号（JSON body）   |
+| POST   | /api/auth/login                    | 否   | —            | 登录，返回 JWT          |
+| GET    | /api/users/me                      | 是   | —            | 获取当前登录用户        |
+| GET    | /api/users/{id}                    | 是   | —            | 按 id 查询用户          |
+| POST   | /api/users                         | 否   | —            | 兼容旧路径，等价于注册  |
+| GET    | /api/roles                         | 是   | role:view    | 角色列表                |
+| POST   | /api/roles                         | 是   | role:create  | 创建角色                |
+| PUT    | /api/roles/{id}                    | 是   | role:update  | 更新角色                |
+| DELETE | /api/roles/{id}                    | 是   | role:delete  | 删除角色                |
+| GET    | /api/roles/{id}/permissions        | 是   | role:assign  | 获取角色权限            |
+| PUT    | /api/roles/{id}/permissions        | 是   | role:assign  | 设置角色权限            |
+| GET    | /api/menus                         | 是   | menu:view    | 菜单列表                |
+| GET    | /api/menus/tree                    | 是   | menu:view    | 菜单树                  |
+| POST   | /api/menus                         | 是   | menu:create  | 创建菜单                |
+| PUT    | /api/menus/{id}                    | 是   | menu:update  | 更新菜单                |
+| DELETE | /api/menus/{id}                    | 是   | menu:delete  | 删除菜单                |
+| GET    | /api/permissions                   | 是   | —            | 权限列表                |
 
 测试：
 
@@ -152,10 +173,18 @@ ADD_METHOD_TO(UserController::create, "/api/users",
 
 或在 `config.json` 中配置全局 Filters。
 
+## RBAC 权限设计
+
+- **用户-角色-权限** 三元模型：`users` ↔ `user_roles` ↔ `roles` ↔ `role_permissions` ↔ `permissions`
+- **菜单即权限**：每个菜单对应一组权限（`menu` 类型为页面访问权，`button` 类型为操作权），由 `menu_id` 关联
+- **PermissionFilter**：在 `PermissionRegistry` 中注册每个 Controller 方法的权限码，请求时校验 JWT 中的用户是否拥有对应权限
+- **前端权限**：`DynamicMenu` 根据后端返回的权限树动态渲染侧边栏；`HasPerm` 组件控制按钮级显隐；路由层 `ProtectedRoute` 控制页面级访问
+
 ## 数据库（SQLite）
 
 - 默认使用 SQLite，数据库文件位于 `data/c_web.db`（首次启动自动创建）
 - 启动时 `core::Bootstrap` 会自动执行 `sql/schema.sql`，存在的表不会重复创建
+- schema 内置种子数据：默认角色 `admin`（全部权限）与 `user`（仅仪表盘+个人中心）
 - `config/config.json` 中 `db_clients` 段控制连接参数；SQLite 写为单连接更稳妥：
   ```json
   "db_clients": [{

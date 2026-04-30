@@ -1,59 +1,178 @@
-/* App 级别的响应式样式 —— 仅保留新页面用到的辅助类 */
+/* 全局 + 登录页 + AdminLayout 样式 */
 
-.auth-page-wrapper {
+:root {
+  --brand: #2f54eb;
+  --brand-dark: #1d39c4;
+  --sider-bg: #0f1c3f;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+}
+
+/* ============ 登录页（半屏 hero + 右侧卡片） ============ */
+.login-page {
+  min-height: 100vh;
+  min-height: 100svh;
+  display: flex;
+  background: #f4f6fb;
+}
+.login-hero {
+  flex: 1;
+  position: relative;
+  color: #fff;
+  padding: 48px;
+  display: flex;
+  align-items: center;
+  background:
+    radial-gradient(1200px 500px at 0% 0%, rgba(255,255,255,0.18), transparent 60%),
+    radial-gradient(900px 500px at 100% 100%, rgba(255,255,255,0.12), transparent 60%),
+    linear-gradient(135deg, #1d39c4 0%, #2f54eb 50%, #597ef7 100%);
+  overflow: hidden;
+}
+.login-hero::before {
+  content: '';
+  position: absolute;
+  inset: -20%;
+  background-image:
+    radial-gradient(circle at 20% 30%, rgba(255,255,255,0.15) 0, transparent 6%),
+    radial-gradient(circle at 80% 60%, rgba(255,255,255,0.12) 0, transparent 8%),
+    radial-gradient(circle at 40% 80%, rgba(255,255,255,0.10) 0, transparent 5%);
+  pointer-events: none;
+}
+.login-hero-inner {
+  position: relative;
+  max-width: 520px;
+}
+.login-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 32px;
+  font-size: 20px;
+  font-weight: 600;
+}
+.login-logo-dot {
+  width: 14px; height: 14px; border-radius: 4px;
+  background: #fff;
+  box-shadow: 0 0 20px rgba(255,255,255,0.7);
+}
+.login-hero-title {
+  color: #fff !important;
+  font-weight: 700 !important;
+  line-height: 1.25 !important;
+  margin: 0 0 16px !important;
+}
+.login-hero-sub {
+  color: rgba(255,255,255,0.88) !important;
+  font-size: 16px;
+  margin-bottom: 28px !important;
+}
+.login-hero-tags {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.login-hero-tags span {
+  padding: 6px 14px;
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 999px;
+  font-size: 13px;
+  backdrop-filter: blur(6px);
+}
+.login-card-wrap {
+  width: 460px;
+  max-width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px 16px;
-  min-height: 100vh;
-  min-height: 100svh;
-  background:
-    linear-gradient(135deg, #e0ecff 0%, #f5f7fa 50%, #fef7ff 100%);
-}
-
-.auth-card {
-  width: 100%;
-  max-width: 420px;
-}
-
-.home-content {
   padding: 24px;
-  max-width: 960px;
+  background: #fff;
+}
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+@media (max-width: 960px) {
+  .login-page { flex-direction: column; }
+  .login-hero { flex: none; padding: 36px 24px; }
+  .login-hero-title { font-size: 28px !important; }
+  .login-card-wrap { width: 100%; flex: 1; }
+}
+@media (max-width: 480px) {
+  .login-hero { padding: 28px 20px; }
+  .login-hero-title { font-size: 24px !important; }
+  .login-hero-sub { font-size: 14px; }
+  .login-card-wrap { padding: 16px 12px; }
+}
+
+/* ============ AdminLayout ============ */
+.admin-brand {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 20px;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.admin-brand-dot {
+  width: 12px; height: 12px; border-radius: 4px;
+  background: linear-gradient(135deg, #597ef7 0%, #2f54eb 100%);
+  box-shadow: 0 0 12px rgba(89,126,247,0.7);
+}
+.admin-brand-text { white-space: nowrap; }
+
+.admin-sider {
+  box-shadow: 2px 0 12px rgba(15,28,63,0.08);
+}
+
+.admin-header {
+  display: flex;
+  align-items: center;
+  padding: 0 16px !important;
+  height: 60px !important;
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(15,28,63,0.06);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.admin-content {
+  padding: 20px;
+  max-width: 1400px;
   margin: 0 auto;
   width: 100%;
 }
-
-/* 平板及以下 */
 @media (max-width: 768px) {
-  .home-content {
-    padding: 16px 12px;
-  }
+  .admin-content { padding: 12px; }
 }
 
-/* 手机端 */
-@media (max-width: 480px) {
-  .auth-page-wrapper {
-    padding: 12px 8px;
-  }
-  .home-content {
-    padding: 12px 8px;
-  }
+/* 页面卡片通用外观 */
+.page-card {
+  border: none !important;
+  box-shadow: 0 2px 12px rgba(15,28,63,0.06);
 }
 
-/* 顶部栏手机端压缩 */
-.app-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-  background: #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
-  height: 64px;
+.stat-card {
+  border: none !important;
+  box-shadow: 0 2px 10px rgba(15,28,63,0.05);
+  background: linear-gradient(135deg, #ffffff 0%, #f5f8ff 100%);
 }
 
-@media (max-width: 480px) {
-  .app-header {
-    padding: 0 12px;
-    height: 56px;
-  }
+/* 兼容旧样式（保留 home-content 以免意外） */
+.home-content {
+  padding: 20px;
+  max-width: 1100px;
+  margin: 0 auto;
+  width: 100%;
 }

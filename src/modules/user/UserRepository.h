@@ -41,6 +41,16 @@ public:
                 std::function<void(dto::UserDto)> onOk,
                 DbErrCb onErr);
 
+    // 同步分页查询（管理端低频调用）
+    struct PageResult {
+        std::vector<dto::UserDto> items;
+        int64_t total{0};
+    };
+    PageResult listPagedSync(int page, int pageSize, const std::string& keyword);
+
+    // 同步删除
+    bool deleteByIdSync(int64_t id);
+
 private:
     drogon::orm::DbClientPtr db() const;
 };
