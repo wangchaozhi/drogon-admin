@@ -6,6 +6,7 @@
 #include "UserRepository.h"
 #include "dto/CreateUserReq.h"
 #include "dto/LoginReq.h"
+#include "dto/UpdateUserReq.h"
 #include "modules/rbac/dto/MenuDto.h"
 #include <drogon/utils/coroutine.h>
 
@@ -36,6 +37,10 @@ public:
     // 注册：写入前对密码做哈希；成功后自动绑定角色——
     // 系统首个用户晋升 admin，超管邮箱同样 admin，其余为普通 user
     drogon::Task<dto::UserDto> create(dto::CreateUserReq req);
+
+    // 编辑资料：name/email 必填，password 可选（空表示不改）；
+    // 返回 nullopt 表示目标用户不存在
+    drogon::Task<std::optional<dto::UserDto>> update(int64_t id, dto::UpdateUserReq req);
 
     // 登录：失败时抛 LoginInvalidError；DB 异常走底层抛出的 DrogonDbException
     drogon::Task<LoginResult> login(dto::LoginReq req);

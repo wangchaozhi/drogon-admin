@@ -9,7 +9,8 @@ export default defineConfig({
     proxy: {
       // 把 /api 透传到后端 Drogon 服务，避免跨域 / 端口处理
       '/api': {
-        target: 'http://localhost:8080',
+        // target: 'http://192.168.159.128:8080',
+        target: 'http://127.0.0.1:8080',
         changeOrigin: true,
       },
     },

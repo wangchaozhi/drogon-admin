@@ -127,6 +127,28 @@ drogon::Task<bool> UserRepository::deleteById(int64_t id) {
     co_return r.affectedRows() > 0;
 }
 
+drogon::Task<std::optional<dto::UserDto>>
+UserRepository::updateById(int64_t id,
+                           std::string name,
+                           std::string email,
+                           std::string passwordHash) {
+    auto client = db();
+    if (!client) co_return std::nullopt;
+
+    if (passwordHash.empty()) {
+        auto r = co_await client->execSqlCoro(
+            "UPDATE users SET name=?, email=? WHERE id=?",
+            name, email, id);
+        if (r.affectedRows() <= 0) co_return std::nullopt;
+    } else {
+        auto r = co_await client->execSqlCoro(
+            "UPDATE users SET name=?, email=?, password_hash=? WHERE id=?",
+            name, email, passwordHash, id);
+        if (r.affectedRows() <= 0) co_return std::nullopt;
+    }
+    co_return co_await findById(id);
+}
+
 drogon::Task<bool> UserRepository::hasAnyAdmin() {
     auto client = db();
     if (!client) co_return true;   // 拿不到 DbClient 时保守：不提升权限

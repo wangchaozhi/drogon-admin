@@ -39,6 +39,12 @@ public:
 
     drogon::Task<bool> deleteById(int64_t id);
 
+    // 更新基础资料；passwordHash 为空时不改密码
+    drogon::Task<std::optional<dto::UserDto>> updateById(int64_t id,
+                                                         std::string name,
+                                                         std::string email,
+                                                         std::string passwordHash);
+
     // 系统是否已存在管理员（user_roles 至少一条 role_id=1 的绑定）
     drogon::Task<bool> hasAnyAdmin();
 

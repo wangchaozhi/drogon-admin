@@ -3,6 +3,7 @@
 #include "core/Logger.h"
 #include "dto/CreateUserReq.h"
 #include "dto/LoginReq.h"
+#include "dto/UpdateUserReq.h"
 #include "common/TimeUtil.h"
 #include "modules/rbac/RbacService.h"
 #include "modules/rbac/dto/RbacReq.h"
@@ -34,7 +35,9 @@ bool isUniqueViolation(const std::string& msg) {
 UserController::UserController() {
     auto& reg = filters::PermissionRegistry::instance();
     reg.bind("GET",    "/api/users",                       "user:view");
+    reg.bind("POST",   "/api/users",                       "user:create");
     reg.bind("GET",    "/api/users/(\\d+)",                "user:view");
+    reg.bind("PUT",    "/api/users/(\\d+)",                "user:update");
     reg.bind("DELETE", "/api/users/(\\d+)",                "user:delete");
     reg.bind("GET",    "/api/users/(\\d+)/roles",          "user:view");
     reg.bind("PUT",    "/api/users/(\\d+)/roles",          "user:assign-role");
@@ -62,6 +65,71 @@ drogon::AsyncTask UserController::registerUser(
         std::string msg = e.what();
         if (isUniqueViolation(msg)) {
             cb(core::Result::fail(4090, "email already registered",
+                                  drogon::k409Conflict));
+        } else {
+            cb(core::Result::fail(5002, "db error: " + msg,
+                                  drogon::k500InternalServerError));
+        }
+    }
+}
+
+drogon::AsyncTask UserController::adminCreate(
+    drogon::HttpRequestPtr req,
+    std::function<void(const drogon::HttpResponsePtr&)> cb) {
+    auto json = req->getJsonObject();
+    if (!json) {
+        cb(core::Result::fail(4001, "invalid json body"));
+        co_return;
+    }
+    std::string err;
+    auto reqDto = dto::CreateUserReq::parse(*json, err);
+    if (!reqDto) {
+        cb(core::Result::fail(4002, err));
+        co_return;
+    }
+    try {
+        auto u = co_await svc_.create(*reqDto);
+        APP_LOG_INFO << "admin create user id=" << u.id << " email=" << u.email;
+        cb(core::Result::ok(u.toJson(), "created"));
+    } catch (const std::exception& e) {
+        std::string msg = e.what();
+        if (isUniqueViolation(msg)) {
+            cb(core::Result::fail(4090, "email already registered",
+                                  drogon::k409Conflict));
+        } else {
+            cb(core::Result::fail(5002, "db error: " + msg,
+                                  drogon::k500InternalServerError));
+        }
+    }
+}
+
+drogon::AsyncTask UserController::update(
+    drogon::HttpRequestPtr req,
+    std::function<void(const drogon::HttpResponsePtr&)> cb,
+    int64_t id) {
+    auto json = req->getJsonObject();
+    if (!json) {
+        cb(core::Result::fail(4001, "invalid json body"));
+        co_return;
+    }
+    std::string err;
+    auto reqDto = dto::UpdateUserReq::parse(*json, err);
+    if (!reqDto) {
+        cb(core::Result::fail(4002, err));
+        co_return;
+    }
+    try {
+        auto u = co_await svc_.update(id, *reqDto);
+        if (!u) {
+            cb(core::Result::notFound("user not found"));
+            co_return;
+        }
+        APP_LOG_INFO << "user updated id=" << u->id << " email=" << u->email;
+        cb(core::Result::ok(u->toJson(), "updated"));
+    } catch (const std::exception& e) {
+        std::string msg = e.what();
+        if (isUniqueViolation(msg)) {
+            cb(core::Result::fail(4090, "email already used",
                                   drogon::k409Conflict));
         } else {
             cb(core::Result::fail(5002, "db error: " + msg,

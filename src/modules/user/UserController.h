@@ -25,6 +25,10 @@ public:
                       "filters::AuthFilter", "filters::PermissionFilter");
         ADD_METHOD_TO(UserController::getById,  "/api/users/{id:\\d+}", drogon::Get,
                       "filters::AuthFilter", "filters::PermissionFilter");
+        ADD_METHOD_TO(UserController::adminCreate, "/api/users",        drogon::Post,
+                      "filters::AuthFilter", "filters::PermissionFilter");
+        ADD_METHOD_TO(UserController::update,   "/api/users/{id:\\d+}", drogon::Put,
+                      "filters::AuthFilter", "filters::PermissionFilter");
         ADD_METHOD_TO(UserController::remove,   "/api/users/{id:\\d+}", drogon::Delete,
                       "filters::AuthFilter", "filters::PermissionFilter");
         ADD_METHOD_TO(UserController::getRoles, "/api/users/{id:\\d+}/roles", drogon::Get,
@@ -32,15 +36,21 @@ public:
         ADD_METHOD_TO(UserController::setRoles, "/api/users/{id:\\d+}/roles", drogon::Put,
                       "filters::AuthFilter", "filters::PermissionFilter");
 
-        // 兼容旧路径：POST /api/users 走注册逻辑（公开）
-        ADD_METHOD_TO(UserController::registerUser, "/api/users", drogon::Post);
-
         // 健康检查（公开，不查 DB，仍为同步）
         ADD_METHOD_TO(UserController::health, "/api/health", drogon::Get);
     METHOD_LIST_END
 
     drogon::AsyncTask registerUser(drogon::HttpRequestPtr req,
                                    std::function<void(const drogon::HttpResponsePtr&)> cb);
+
+    // 管理员创建用户（受保护，权限：user:create）
+    drogon::AsyncTask adminCreate(drogon::HttpRequestPtr req,
+                                  std::function<void(const drogon::HttpResponsePtr&)> cb);
+
+    // 管理员编辑用户（受保护，权限：user:update）
+    drogon::AsyncTask update(drogon::HttpRequestPtr req,
+                             std::function<void(const drogon::HttpResponsePtr&)> cb,
+                             int64_t id);
 
     drogon::AsyncTask login(drogon::HttpRequestPtr req,
                             std::function<void(const drogon::HttpResponsePtr&)> cb);
