@@ -1,14 +1,17 @@
 {
-    "name": "c-web",
-    "version": "0.1.0",
-    "dependencies": [
-        {
-            "name": "drogon",
-            "features": ["sqlite3"]
-        },
-        "jsoncpp",
-        "openssl",
-        "zlib",
+  "name": "c-web",
+  "version": "0.1.0",
+  "dependencies": [
+    {
+      "name": "drogon",
+      "features": [
         "sqlite3"
-    ]
+      ]
+    },
+    "jsoncpp",
+    "openssl",
+    "zlib",
+    "sqlite3"
+  ],
+  "builtin-baseline": "cd124b84feb0c02a24a2d90981e8358fdee0e077"
 }

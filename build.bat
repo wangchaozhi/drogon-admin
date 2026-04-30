@@ -2,14 +2,35 @@
 REM =======================================================================
 REM  c_web build script (Windows / MSVC + vcpkg)
 REM  Requirement: run inside "x64 Native Tools Command Prompt for VS 2022"
-REM               and set environment variable VCPKG_ROOT to your vcpkg dir
+REM  VCPKG_ROOT: default to E:\dev\vcpkg if not set in environment
 REM =======================================================================
 
 setlocal
 
-if "%VCPKG_ROOT%"=="" (
-    echo [ERROR] VCPKG_ROOT is not set. Please set it to your vcpkg install dir.
+REM ---------------------------------------------------------------------
+REM  VS 2022 Developer Prompt auto-sets VCPKG_ROOT to its bundled vcpkg
+REM  (not a git clone). We force-prefer E:\dev\vcpkg when it exists.
+REM ---------------------------------------------------------------------
+if exist "E:\dev\vcpkg\vcpkg.exe" (
+    set "VCPKG_ROOT=E:\dev\vcpkg"
+    echo [INFO] Using vcpkg at E:\dev\vcpkg
+) else (
+    if "%VCPKG_ROOT%"=="" (
+        echo [ERROR] E:\dev\vcpkg not found and VCPKG_ROOT not set.
+        exit /b 1
+    )
+    echo [INFO] Using vcpkg at %VCPKG_ROOT%
+)
+
+if not exist "%VCPKG_ROOT%\vcpkg.exe" (
+    echo [ERROR] vcpkg.exe not found at %VCPKG_ROOT%\vcpkg.exe
+    echo         Run bootstrap-vcpkg.bat inside %VCPKG_ROOT% first.
     exit /b 1
+)
+
+if not exist "%VCPKG_ROOT%\.git" (
+    echo [WARN] %VCPKG_ROOT% is not a git clone; builtin-baseline cannot be resolved.
+    echo        Recommended: git clone https://github.com/microsoft/vcpkg.git E:\dev\vcpkg
 )
 
 where cl >nul 2>nul
@@ -19,6 +40,18 @@ if errorlevel 1 (
 )
 
 echo [1/3] Installing dependencies via vcpkg manifest...
+
+REM vcpkg manifest mode requires a builtin-baseline. Auto-inject if missing.
+findstr /C:"builtin-baseline" vcpkg.json >nul 2>nul
+if errorlevel 1 (
+    echo [INFO] Adding initial builtin-baseline to vcpkg.json ...
+    "%VCPKG_ROOT%\vcpkg.exe" --x-manifest-root=. x-update-baseline --add-initial-baseline
+    if errorlevel 1 (
+        echo [ERROR] x-update-baseline failed. Ensure %VCPKG_ROOT% is a git clone and 'git' is in PATH.
+        exit /b 1
+    )
+)
+
 "%VCPKG_ROOT%\vcpkg.exe" install --triplet x64-windows
 if errorlevel 1 exit /b 1
 

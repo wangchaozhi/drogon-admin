@@ -55,9 +55,11 @@ std::vector<std::string> loadSqlStatements(const std::string& path) {
 }
 
 void ensureDbDirAndSchema() {
-    // 确保 data 目录存在（sqlite filename 相对路径位于此）
+    // 确保 data / logs / uploads 目录存在（均为配置里引用的相对路径）
     std::error_code ec;
     std::filesystem::create_directories("data", ec);
+    std::filesystem::create_directories("logs", ec);
+    std::filesystem::create_directories("uploads", ec);
 
     // 待 Drogon 启动后再执行 schema，使用 beginningAdvice 钩子
     drogon::app().registerBeginningAdvice([]() {
@@ -82,6 +84,14 @@ void ensureDbDirAndSchema() {
 } // namespace
 
 void Bootstrap::init(const std::string& configPath) {
+    // 先确保配置中引用的相对目录存在，否则 Drogon 会因 "Log path does not exist" 退出
+    {
+        std::error_code ec;
+        std::filesystem::create_directories("data", ec);
+        std::filesystem::create_directories("logs", ec);
+        std::filesystem::create_directories("uploads", ec);
+    }
+
     auto& app = drogon::app();
     app.loadConfigFile(configPath);
 
