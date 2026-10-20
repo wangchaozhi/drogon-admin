@@ -84,6 +84,8 @@ export default function RoleListPage() {
     }
   }, [message])
 
+  // Initial remote-data loading intentionally owns this page's loading state.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load() }, [load])
 
   const openCreate = () => {

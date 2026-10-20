@@ -56,7 +56,7 @@ drogon-admin/
 4. Drogon 已启用 `sqlite3` feature，依赖：`drogon[sqlite3]` / `jsoncpp` / `openssl` / `zlib` / `sqlite3`（vcpkg.json 已声明，首次构建会自动触发）
 
 ### 前端
-1. Node.js 24+
+1. Node.js 26+
 2. npm 10+
 
 ## 后端构建与运行

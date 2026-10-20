@@ -72,6 +72,8 @@ export default function UserListPage() {
     }
   }, [page, pageSize, keyword, message])
 
+  // Initial remote-data loading intentionally owns this page's loading state.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load() }, [load])
   useEffect(() => { roleApi.list().then((r) => setRoles(r.data)).catch(() => {}) }, [])
 

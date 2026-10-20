@@ -76,6 +76,8 @@ export default function MenuListPage() {
     }
   }, [message])
 
+  // Initial remote-data loading intentionally owns this page's loading state.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load() }, [load])
 
   const list = useMemo(() => flatten(tree), [tree])

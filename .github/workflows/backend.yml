@@ -24,12 +24,12 @@ on:
         required: false
         default: ""
       prerelease:
-        description: "是否标记为 pre-release（留空则按 tag 中是否含 `-` 自动判断）"
+        description: "是否标记为 pre-release（auto 按 tag 中是否含 `-` 自动判断）"
         required: false
-        default: ""
+        default: "auto"
         type: choice
         options:
-          - ""
+          - "auto"
           - "true"
           - "false"
 
@@ -44,7 +44,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -116,10 +116,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Export GitHub Actions cache env for vcpkg
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
@@ -208,7 +208,7 @@ jobs:
 
       # ---------- 产物（所有触发都上传到 workflow artifact，便于 PR/手动下载）----------
       - name: Upload executable (workflow artifact)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: |
@@ -226,10 +226,14 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
         shell: bash
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.tag }}" ]]; then
             TAG='${{ inputs.tag }}'
           else
             TAG='${{ github.ref_name }}'
+          fi
+          if [[ -z "$TAG" ]]; then
+            echo "::error::无法解析 Release tag"
+            exit 1
           fi
           echo "RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
 
@@ -261,11 +265,11 @@ jobs:
 
       - name: Upload to GitHub Release
         if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           files: ${{ env.ASSET_PATH }}
           fail_on_unmatched_files: true
           draft: false
-          # 若手动指定 prerelease 则按指定值；否则按 tag 名含 '-' 自动判断
-          prerelease: ${{ inputs.prerelease != '' && inputs.prerelease == 'true' || (inputs.prerelease == '' && contains(env.RELEASE_TAG, '-')) }}
+          # 手动选择 auto 或 tag push 时，按 tag 名是否含 '-' 自动判断
+          prerelease: ${{ inputs.prerelease == 'true' || ((github.event_name != 'workflow_dispatch' || inputs.prerelease == 'auto') && contains(env.RELEASE_TAG, '-')) }}
