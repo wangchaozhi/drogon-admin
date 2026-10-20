@@ -10,6 +10,7 @@ export type {
   Menu,
   Permission,
   AuditLog,
+  DashboardStats,
   LoginData,
   Me,
   Page,
@@ -24,6 +25,7 @@ export type { MenuUpsertReq } from './menu'
 export { permissionApi } from './permission'
 export { auditApi } from './audit'
 export type { AuditLogPage } from './audit'
+export { dashboardApi } from './dashboard'
 
 // 兼容旧代码的 api 聚合（旧代码使用 api.login/api.me 等）
 import { authApi } from './auth'

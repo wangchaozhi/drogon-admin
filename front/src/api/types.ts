@@ -47,6 +47,17 @@ export type AuditLog = {
   created_at: number
 }
 
+export type DashboardStats = {
+  total_users: number
+  enabled_users: number
+  disabled_users: number
+  locked_users: number
+  total_roles: number
+  visible_menus: number
+  audit_events_24h: number
+  generated_at: number
+}
+
 export type LoginData = {
   token: string
   token_type: string

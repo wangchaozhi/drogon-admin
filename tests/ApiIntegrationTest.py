@@ -228,6 +228,7 @@ def verify_migration_state(root: Path) -> None:
             "002_email_nocase",
             "003_rbac_foreign_keys",
             "004_audit_logs",
+            "005_dashboard_stats_permission",
         }
         if not expected_versions.issubset(versions):
             raise AssertionError(
@@ -527,6 +528,7 @@ def run_checks(base_url: str) -> tuple[set[str], int]:
     )
     admin_token = str(admin_login["token"])
     assert "audit:view" in admin_login["permissions"]
+    assert "dashboard:stats" in admin_login["permissions"]
     assert any(
         child.get("path") == "/system/audit-logs"
         for menu in admin_login["menus"]
@@ -537,6 +539,23 @@ def run_checks(base_url: str) -> tuple[set[str], int]:
         "authenticated profile",
     )
     assert int(me["user"]["id"]) == admin_id
+    dashboard_stats = expect_ok(
+        request(
+            base_url,
+            "GET",
+            "/api/dashboard/stats",
+            token=admin_token,
+        ),
+        "administrator dashboard statistics",
+    )
+    assert int(dashboard_stats["total_users"]) == 1
+    assert int(dashboard_stats["enabled_users"]) == 1
+    assert int(dashboard_stats["disabled_users"]) == 0
+    assert int(dashboard_stats["locked_users"]) == 0
+    assert int(dashboard_stats["total_roles"]) == 2
+    assert int(dashboard_stats["visible_menus"]) >= 7
+    assert int(dashboard_stats["audit_events_24h"]) >= 1
+    assert int(dashboard_stats["generated_at"]) > 0
     expect_status(
         request(
             base_url,
@@ -828,6 +847,7 @@ def run_checks(base_url: str) -> tuple[set[str], int]:
     )
     operator_token = str(operator_login["token"])
     assert "audit:view" not in operator_login["permissions"]
+    assert "dashboard:stats" not in operator_login["permissions"]
     assert not any(
         child.get("path") == "/system/audit-logs"
         for menu in operator_login["menus"]
@@ -842,6 +862,16 @@ def run_checks(base_url: str) -> tuple[set[str], int]:
         ),
         403,
         "deny audit logs without audit:view",
+    )
+    expect_status(
+        request(
+            base_url,
+            "GET",
+            "/api/dashboard/stats",
+            token=operator_token,
+        ),
+        403,
+        "deny dashboard statistics without dashboard:stats",
     )
     expect_ok(
         request(

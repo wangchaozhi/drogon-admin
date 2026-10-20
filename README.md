@@ -29,6 +29,7 @@ drogon-admin/
 │           ├── RbacRepository      # RBAC 数据访问（协程）
 │           └── dto/                # RBAC DTO
 │       └── audit/                   # 审计日志 Controller / Repository / DTO
+│       └── dashboard/               # 管理员系统概览统计
 ├── front/                      # 前端（React 19 + Vite + Ant Design 6 + React Router）
 │   └── src/
 │       ├── pages/              # 页面：login / dashboard / profile / admin（users/roles/menus/audit）/ error
@@ -251,6 +252,8 @@ npm run preview      REM 预览生产构建
 所有页面与管理布局均按路由懒加载，生产构建会拆分为独立 chunk，避免首屏
 下载完整后台管理功能。根节点错误边界会捕获未处理的 React 渲染异常并显示
 可恢复的刷新页面，避免用户只看到空白屏。
+拥有 `dashboard:stats` 权限的管理员会在仪表盘看到用户状态、角色、可见菜单和
+近 24 小时审计操作统计；普通用户仅看到自己的角色、权限和菜单概览。
 
 ## 默认接口
 
@@ -259,6 +262,7 @@ npm run preview      REM 预览生产构建
 | GET    | /api/health                        | 否   | —            | 健康检查                |
 | GET    | /api/ready                         | 否   | —            | DB/迁移就绪检查         |
 | GET    | /api/metrics                       | 否   | —            | Prometheus 运行指标     |
+| GET    | /api/dashboard/stats               | 是   | dashboard:stats | 管理员系统概览统计   |
 | POST   | /api/auth/register                 | 否   | —            | 按注册策略创建账号      |
 | POST   | /api/auth/login                    | 否   | —            | 登录，返回 JWT          |
 | POST   | /api/auth/logout                   | 是   | —            | 安全退出并吊销 Token    |

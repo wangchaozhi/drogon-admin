@@ -108,6 +108,7 @@ WHERE NOT EXISTS (SELECT 1 FROM menus WHERE path = '/system/audit-logs');
 
 -- 权限：menu 类型 + 按钮类型
 INSERT OR IGNORE INTO permissions (code, name, type, menu_id, created_at) VALUES ('dashboard:view', '仪表盘-查看', 'menu',   1, 0);
+INSERT OR IGNORE INTO permissions (code, name, type, menu_id, created_at) VALUES ('dashboard:stats', '仪表盘-系统概览', 'button', 1, 0);
 INSERT OR IGNORE INTO permissions (code, name, type, menu_id, created_at) VALUES ('system:view',    '系统管理',   'menu',   2, 0);
 
 INSERT OR IGNORE INTO permissions (code, name, type, menu_id, created_at) VALUES ('user:view',         '用户-查看',     'menu',   3, 0);
