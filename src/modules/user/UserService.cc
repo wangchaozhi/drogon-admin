@@ -76,7 +76,8 @@ drogon::Task<std::optional<dto::UserDto>>
 UserService::update(int64_t id, dto::UpdateUserReq req) {
     std::string hash;
     if (req.password) hash = common::CryptoUtil::hashPassword(*req.password);
-    auto u = co_await repo_.updateById(id, req.name, req.email, hash);
+    auto u = co_await repo_.updateById(
+        id, req.name, req.email, hash, req.disabled);
     if (u) rbac::RbacService::instance().invalidateUser(id);
     co_return u;
 }

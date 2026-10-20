@@ -1,5 +1,6 @@
 #include "RbacRepository.h"
 #include "common/TimeUtil.h"
+#include "core/DomainError.h"
 #include "core/Logger.h"
 #include <drogon/drogon.h>
 #include <unordered_map>
@@ -83,9 +84,20 @@ drogon::Task<bool> RbacRepository::updateRole(int64_t id, dto::RoleUpsertReq r) 
 }
 
 drogon::Task<bool> RbacRepository::deleteRole(int64_t id) {
-    auto res = co_await db()->execSqlCoro("DELETE FROM roles WHERE id=?", id);
-    co_await db()->execSqlCoro("DELETE FROM role_permissions WHERE role_id=?", id);
-    co_await db()->execSqlCoro("DELETE FROM user_roles WHERE role_id=?", id);
+    auto tx = co_await db()->newTransactionCoro(
+        drogon::orm::TransactionType::Immediate);
+    auto role = co_await tx->execSqlCoro(
+        "SELECT code FROM roles WHERE id=?", id);
+    if (role.empty()) co_return false;
+    const auto code = role[0]["code"].as<std::string>();
+    if (code == "admin" || code == "user")
+        throw core::ConflictError("built-in roles cannot be deleted");
+
+    auto res = co_await tx->execSqlCoro("DELETE FROM roles WHERE id=?", id);
+    co_await tx->execSqlCoro(
+        "DELETE FROM role_permissions WHERE role_id=?", id);
+    co_await tx->execSqlCoro(
+        "DELETE FROM user_roles WHERE role_id=?", id);
     co_return res.affectedRows() > 0;
 }
 
@@ -102,9 +114,30 @@ RbacRepository::getRolePermissionIds(int64_t roleId) {
 drogon::Task<> RbacRepository::setRolePermissions(int64_t roleId,
                                                   std::vector<int64_t> permIds) {
     auto c = db();
-    co_await c->execSqlCoro("DELETE FROM role_permissions WHERE role_id=?", roleId);
+    auto tx = co_await c->newTransactionCoro(
+        drogon::orm::TransactionType::Immediate);
+    auto role = co_await tx->execSqlCoro(
+        "SELECT code FROM roles WHERE id=?", roleId);
+    if (role.empty()) throw core::NotFoundError("role not found");
+    if (role[0]["code"].as<std::string>() == "admin")
+        throw core::ConflictError(
+            "administrator permissions are managed by the system");
+
+    std::sort(permIds.begin(), permIds.end());
+    permIds.erase(std::unique(permIds.begin(), permIds.end()), permIds.end());
     for (auto pid : permIds) {
-        co_await c->execSqlCoro(
+        if (pid <= 0)
+            throw core::ValidationError("permission ids must be positive");
+        auto exists = co_await tx->execSqlCoro(
+            "SELECT 1 FROM permissions WHERE id=?", pid);
+        if (exists.empty())
+            throw core::NotFoundError("permission not found");
+    }
+
+    co_await tx->execSqlCoro(
+        "DELETE FROM role_permissions WHERE role_id=?", roleId);
+    for (auto pid : permIds) {
+        co_await tx->execSqlCoro(
             "INSERT OR IGNORE INTO role_permissions(role_id,permission_id) VALUES(?,?)",
             roleId, pid);
     }
@@ -227,12 +260,55 @@ RbacRepository::getUserRoleIds(int64_t userId) {
 drogon::Task<> RbacRepository::setUserRoles(int64_t userId,
                                             std::vector<int64_t> roleIds) {
     auto c = db();
-    co_await c->execSqlCoro("DELETE FROM user_roles WHERE user_id=?", userId);
+    auto tx = co_await c->newTransactionCoro(
+        drogon::orm::TransactionType::Immediate);
+    auto user = co_await tx->execSqlCoro(
+        "SELECT disabled FROM users WHERE id=?", userId);
+    if (user.empty()) throw core::NotFoundError("user not found");
+
+    std::sort(roleIds.begin(), roleIds.end());
+    roleIds.erase(std::unique(roleIds.begin(), roleIds.end()), roleIds.end());
     for (auto rid : roleIds) {
-        co_await c->execSqlCoro(
+        if (rid <= 0)
+            throw core::ValidationError("role ids must be positive");
+        auto exists = co_await tx->execSqlCoro(
+            "SELECT 1 FROM roles WHERE id=?", rid);
+        if (exists.empty()) throw core::NotFoundError("role not found");
+    }
+
+    std::vector<int64_t> currentRoles;
+    auto current = co_await tx->execSqlCoro(
+        "SELECT role_id FROM user_roles WHERE user_id=? ORDER BY role_id",
+        userId);
+    currentRoles.reserve(current.size());
+    for (const auto& row : current)
+        currentRoles.push_back(row["role_id"].as<int64_t>());
+    if (currentRoles == roleIds) co_return;
+
+    const bool hadAdmin =
+        std::binary_search(currentRoles.begin(), currentRoles.end(), int64_t{1});
+    const bool keepsAdmin =
+        std::binary_search(roleIds.begin(), roleIds.end(), int64_t{1});
+    const bool enabled = user[0]["disabled"].as<int>() == 0;
+    if (hadAdmin && !keepsAdmin && enabled) {
+        auto admins = co_await tx->execSqlCoro(
+            "SELECT COUNT(*) AS c FROM users u "
+            "JOIN user_roles ur ON ur.user_id=u.id "
+            "WHERE ur.role_id=1 AND u.disabled=0");
+        if (!admins.empty() && admins[0]["c"].as<int64_t>() <= 1)
+            throw core::ConflictError(
+                "at least one enabled administrator is required");
+    }
+
+    co_await tx->execSqlCoro(
+        "DELETE FROM user_roles WHERE user_id=?", userId);
+    for (auto rid : roleIds) {
+        co_await tx->execSqlCoro(
             "INSERT OR IGNORE INTO user_roles(user_id,role_id) VALUES(?,?)",
             userId, rid);
     }
+    co_await tx->execSqlCoro(
+        "UPDATE users SET token_version=token_version+1 WHERE id=?", userId);
     co_return;
 }
 

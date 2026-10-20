@@ -10,6 +10,7 @@ import {
   Popconfirm,
   Select,
   Space,
+  Switch,
   Table,
   Tag,
   Typography,
@@ -34,6 +35,7 @@ type FormValues = {
   name: string
   email: string
   password?: string
+  disabled?: boolean
 }
 
 export default function UserListPage() {
@@ -86,7 +88,12 @@ export default function UserListPage() {
   const openEdit = (u: User) => {
     setEditing(u)
     form.resetFields()
-    form.setFieldsValue({ name: u.name, email: u.email, password: '' })
+    form.setFieldsValue({
+      name: u.name,
+      email: u.email,
+      password: '',
+      disabled: u.disabled,
+    })
     setFormOpen(true)
   }
 
@@ -95,7 +102,11 @@ export default function UserListPage() {
     setSaving(true)
     try {
       if (editing) {
-        const req: UserUpdateReq = { name: v.name, email: v.email }
+        const req: UserUpdateReq = {
+          name: v.name,
+          email: v.email,
+          disabled: v.disabled ?? false,
+        }
         if (v.password && v.password.length > 0) req.password = v.password
         await userApi.update(editing.id, req)
       } else {
@@ -268,8 +279,18 @@ export default function UserListPage() {
               ? [{ min: 12, max: 256, message: '密码长度需为 12–256 位', validateTrigger: 'onBlur' }]
               : [{ required: true, message: '请输入密码' }, { min: 12, max: 256, message: '密码长度需为 12–256 位' }]}
           >
-            <Input.Password placeholder={editing ? '不修改可留空' : '至少 6 位'} autoComplete="new-password" />
+            <Input.Password placeholder={editing ? '不修改可留空' : '至少 12 位'} autoComplete="new-password" />
           </Form.Item>
+          {editing && (
+            <Form.Item
+              name="disabled"
+              label="禁用账号"
+              valuePropName="checked"
+              extra={editing.id === me?.id ? '不能禁用当前登录账号' : '禁用后，该用户的现有会话会立即失效'}
+            >
+              <Switch disabled={editing.id === me?.id} />
+            </Form.Item>
+          )}
         </Form>
       </Modal>
 

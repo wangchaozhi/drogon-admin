@@ -13,6 +13,7 @@ struct UpdateUserReq {
     std::string name;
     std::string email;
     std::optional<std::string> password;  // 可选：仅在显式传入时才修改
+    std::optional<bool> disabled;          // 可选：管理员启用/禁用账号
 
     static std::optional<UpdateUserReq> parse(const Json::Value& j,
                                               std::string& err) {
@@ -33,6 +34,10 @@ struct UpdateUserReq {
             return std::nullopt;
         }
         if (j.isMember("password")) {
+            if (!j["password"].isString()) {
+                err = "password must be a string";
+                return std::nullopt;
+            }
             auto pwd = j["password"].asString();
             if (!pwd.empty()) {
                 if (!validation::validPassword(pwd)) {
@@ -41,6 +46,13 @@ struct UpdateUserReq {
                 }
                 req.password = std::move(pwd);
             }
+        }
+        if (j.isMember("disabled")) {
+            if (!j["disabled"].isBool()) {
+                err = "disabled must be boolean";
+                return std::nullopt;
+            }
+            req.disabled = j["disabled"].asBool();
         }
         return req;
     }

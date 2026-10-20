@@ -22,6 +22,7 @@ export type UserUpdateReq = {
   name: string
   email: string
   password?: string  // 留空表示不修改密码
+  disabled?: boolean
 }
 
 export const userApi = {

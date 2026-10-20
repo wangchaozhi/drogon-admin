@@ -3,6 +3,8 @@
 #include "core/Result.h"
 #include "core/Logger.h"
 
+#include <algorithm>
+
 namespace filters {
 
 static std::string methodToStr(drogon::HttpMethod m) {
@@ -34,6 +36,15 @@ void PermissionFilter::doFilter(const drogon::HttpRequestPtr& req,
     if (!need) {
         fccb();  // 路由未声明所需权限 → 放行（仅要求已登录）
         return;
+    }
+
+    // 内置 admin 是系统级超级管理员。即使权限映射被误删，也保留恢复能力。
+    if (attrs->find("roles")) {
+        const auto roles = attrs->get<std::vector<std::string>>("roles");
+        if (std::find(roles.begin(), roles.end(), "admin") != roles.end()) {
+            fccb();
+            return;
+        }
     }
 
     // permissionsStr 形如 "|dashboard:view|user:view|..."

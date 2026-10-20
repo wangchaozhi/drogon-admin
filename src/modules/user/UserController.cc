@@ -1,4 +1,5 @@
 #include "UserController.h"
+#include "core/DomainError.h"
 #include "core/Result.h"
 #include "core/Logger.h"
 #include "dto/CreateUserReq.h"
@@ -120,6 +121,14 @@ drogon::AsyncTask UserController::update(
         cb(core::Result::fail(4002, err));
         co_return;
     }
+    const auto attrs = req->attributes();
+    const int64_t currentUid = attrs && attrs->find("userId")
+        ? attrs->get<int64_t>("userId") : 0;
+    if (currentUid == id && reqDto->disabled.value_or(false)) {
+        cb(core::Result::fail(
+            4003, "cannot disable yourself", drogon::k400BadRequest));
+        co_return;
+    }
     try {
         auto u = co_await svc_.update(id, *reqDto);
         if (!u) {
@@ -128,6 +137,8 @@ drogon::AsyncTask UserController::update(
         }
         APP_LOG_INFO << "user updated id=" << u->id << " email=" << u->email;
         cb(core::Result::ok(u->toJson(), "updated"));
+    } catch (const core::ConflictError& e) {
+        cb(core::Result::fail(4091, e.what(), drogon::k409Conflict));
     } catch (const std::exception& e) {
         std::string msg = e.what();
         if (isUniqueViolation(msg)) {
@@ -283,6 +294,8 @@ drogon::AsyncTask UserController::remove(
         }
         rbac::RbacService::instance().invalidateUser(id);
         cb(core::Result::ok(Json::nullValue, "deleted"));
+    } catch (const core::ConflictError& e) {
+        cb(core::Result::fail(4091, e.what(), drogon::k409Conflict));
     } catch (const std::exception& e) {
         cb(core::Result::fail(5003, std::string("db error: ") + e.what(),
                               drogon::k500InternalServerError));
@@ -319,6 +332,12 @@ drogon::AsyncTask UserController::setRoles(
         co_await rbac::RbacService::instance().repo().setUserRoles(id, r->ids);
         rbac::RbacService::instance().invalidateUser(id);
         cb(core::Result::ok(Json::nullValue, "ok"));
+    } catch (const core::ConflictError& e) {
+        cb(core::Result::fail(4091, e.what(), drogon::k409Conflict));
+    } catch (const core::NotFoundError& e) {
+        cb(core::Result::notFound(e.what()));
+    } catch (const core::ValidationError& e) {
+        cb(core::Result::fail(4002, e.what(), drogon::k400BadRequest));
     } catch (const std::exception& e) {
         cb(core::Result::fail(5003, std::string("db error: ") + e.what(),
                               drogon::k500InternalServerError));

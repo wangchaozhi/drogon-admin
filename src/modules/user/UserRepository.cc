@@ -1,5 +1,6 @@
 #include "UserRepository.h"
 #include "common/TimeUtil.h"
+#include "core/DomainError.h"
 #include "core/Logger.h"
 #include <drogon/drogon.h>
 #include <drogon/orm/Exception.h>
@@ -196,9 +197,31 @@ UserRepository::listPaged(int page, int pageSize, std::string keyword) {
 drogon::Task<bool> UserRepository::deleteById(int64_t id) {
     auto client = db();
     if (!client) co_return false;
-    // 一并清理用户-角色关联
-    co_await client->execSqlCoro("DELETE FROM user_roles WHERE user_id=?", id);
-    auto r = co_await client->execSqlCoro("DELETE FROM users WHERE id=?", id);
+
+    auto tx = co_await client->newTransactionCoro(
+        drogon::orm::TransactionType::Immediate);
+    auto target = co_await tx->execSqlCoro(
+        "SELECT disabled,EXISTS("
+        "SELECT 1 FROM user_roles WHERE user_id=users.id AND role_id=1"
+        ") AS is_admin FROM users WHERE id=?",
+        id);
+    if (target.empty()) co_return false;
+
+    const bool isActiveAdmin =
+        target[0]["disabled"].as<int>() == 0
+        && target[0]["is_admin"].as<int>() != 0;
+    if (isActiveAdmin) {
+        auto admins = co_await tx->execSqlCoro(
+            "SELECT COUNT(*) AS c FROM users u "
+            "JOIN user_roles ur ON ur.user_id=u.id "
+            "WHERE ur.role_id=1 AND u.disabled=0");
+        if (!admins.empty() && admins[0]["c"].as<int64_t>() <= 1)
+            throw core::ConflictError(
+                "at least one enabled administrator is required");
+    }
+
+    co_await tx->execSqlCoro("DELETE FROM user_roles WHERE user_id=?", id);
+    auto r = co_await tx->execSqlCoro("DELETE FROM users WHERE id=?", id);
     co_return r.affectedRows() > 0;
 }
 
@@ -259,23 +282,58 @@ drogon::Task<std::optional<dto::UserDto>>
 UserRepository::updateById(int64_t id,
                            std::string name,
                            std::string email,
-                           std::string passwordHash) {
+                           std::string passwordHash,
+                           std::optional<bool> disabled) {
     auto client = db();
     if (!client) co_return std::nullopt;
 
-    if (passwordHash.empty()) {
-        auto r = co_await client->execSqlCoro(
-            "UPDATE users SET name=?, email=? WHERE id=?",
-            name, email, id);
-        if (r.affectedRows() <= 0) co_return std::nullopt;
-    } else {
-        auto r = co_await client->execSqlCoro(
-            "UPDATE users SET name=?, email=?, password_hash=?,"
-            "token_version=token_version+1 WHERE id=?",
-            name, email, passwordHash, id);
-        if (r.affectedRows() <= 0) co_return std::nullopt;
+    auto tx = co_await client->newTransactionCoro(
+        drogon::orm::TransactionType::Immediate);
+    auto current = co_await tx->execSqlCoro(
+        "SELECT email,disabled,EXISTS("
+        "SELECT 1 FROM user_roles WHERE user_id=users.id AND role_id=1"
+        ") AS is_admin FROM users WHERE id=?",
+        id);
+    if (current.empty()) co_return std::nullopt;
+
+    const bool wasDisabled = current[0]["disabled"].as<int>() != 0;
+    const bool nextDisabled = disabled.value_or(wasDisabled);
+    const bool isAdmin = current[0]["is_admin"].as<int>() != 0;
+    if (!wasDisabled && nextDisabled && isAdmin) {
+        auto admins = co_await tx->execSqlCoro(
+            "SELECT COUNT(*) AS c FROM users u "
+            "JOIN user_roles ur ON ur.user_id=u.id "
+            "WHERE ur.role_id=1 AND u.disabled=0");
+        if (!admins.empty() && admins[0]["c"].as<int64_t>() <= 1)
+            throw core::ConflictError(
+                "at least one enabled administrator is required");
     }
-    co_return co_await findById(id);
+
+    const bool revokeTokens =
+        !passwordHash.empty()
+        || current[0]["email"].as<std::string>() != email
+        || wasDisabled != nextDisabled;
+    bool updated = false;
+    if (passwordHash.empty()) {
+        auto result = co_await tx->execSqlCoro(
+            "UPDATE users SET name=?,email=?,disabled=?,"
+            "token_version=token_version+? WHERE id=?",
+            name, email, nextDisabled ? 1 : 0,
+            revokeTokens ? 1 : 0, id);
+        updated = result.affectedRows() > 0;
+    } else {
+        auto result = co_await tx->execSqlCoro(
+            "UPDATE users SET name=?,email=?,password_hash=?,disabled=?,"
+            "token_version=token_version+1 WHERE id=?",
+            name, email, passwordHash, nextDisabled ? 1 : 0, id);
+        updated = result.affectedRows() > 0;
+    }
+    if (!updated) co_return std::nullopt;
+
+    auto rows = co_await tx->execSqlCoro(
+        "SELECT id,name,email,disabled,created_at FROM users WHERE id=?", id);
+    if (rows.empty()) co_return std::nullopt;
+    co_return userFromRow(rows[0]);
 }
 
 drogon::Task<bool> UserRepository::hasAnyAdmin() {

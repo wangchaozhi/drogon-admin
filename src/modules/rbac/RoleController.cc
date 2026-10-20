@@ -1,6 +1,7 @@
 #include "RoleController.h"
 #include "RbacService.h"
 #include "dto/RbacReq.h"
+#include "core/DomainError.h"
 #include "core/Result.h"
 #include "core/Logger.h"
 #include "filters/PermissionRegistry.h"
@@ -91,6 +92,8 @@ drogon::AsyncTask RoleController::remove(
         }
         RbacService::instance().invalidateAll();
         cb(core::Result::ok(Json::nullValue, "deleted"));
+    } catch (const core::ConflictError& e) {
+        cb(core::Result::fail(4091, e.what(), drogon::k409Conflict));
     } catch (const std::exception& e) {
         cb(core::Result::fail(5003, std::string("db error: ") + e.what(),
                               drogon::k500InternalServerError));
@@ -127,6 +130,12 @@ drogon::AsyncTask RoleController::setPerms(
         co_await RbacService::instance().repo().setRolePermissions(id, r->ids);
         RbacService::instance().invalidateAll();
         cb(core::Result::ok(Json::nullValue, "ok"));
+    } catch (const core::ConflictError& e) {
+        cb(core::Result::fail(4091, e.what(), drogon::k409Conflict));
+    } catch (const core::NotFoundError& e) {
+        cb(core::Result::notFound(e.what()));
+    } catch (const core::ValidationError& e) {
+        cb(core::Result::fail(4002, e.what(), drogon::k400BadRequest));
     } catch (const std::exception& e) {
         cb(core::Result::fail(5003, std::string("db error: ") + e.what(),
                               drogon::k500InternalServerError));
