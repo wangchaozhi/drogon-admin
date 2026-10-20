@@ -5,6 +5,7 @@
 #include "core/ErrorHandler.h"
 #include "core/Result.h"
 #include "filters/PermissionRegistry.h"
+#include "modules/audit/AuditService.h"
 
 namespace modules::rbac {
 
@@ -54,6 +55,17 @@ drogon::AsyncTask MenuController::create(
     try {
         auto saved = co_await RbacService::instance().repo().createMenu(*m);
         RbacService::instance().invalidateAll();
+        Json::Value details;
+        details["name"] = saved.name;
+        details["path"] = saved.path;
+        details["parent_id"] = static_cast<Json::Int64>(saved.parentId);
+        details["type"] = saved.type;
+        co_await audit::AuditService::instance().record(
+            req,
+            "menu.create",
+            "menu",
+            std::to_string(saved.id),
+            std::move(details));
         cb(core::Result::ok(saved.toJson(), "created"));
     } catch (const core::NotFoundError& e) {
         cb(core::Result::notFound(e.what()));
@@ -81,6 +93,17 @@ drogon::AsyncTask MenuController::update(
         }
         RbacService::instance().invalidateAll();
         auto saved = co_await RbacService::instance().repo().getMenu(id);
+        Json::Value details;
+        details["name"] = m->name;
+        details["path"] = m->path;
+        details["parent_id"] = static_cast<Json::Int64>(m->parentId);
+        details["type"] = m->type;
+        co_await audit::AuditService::instance().record(
+            req,
+            "menu.update",
+            "menu",
+            std::to_string(id),
+            std::move(details));
         cb(core::Result::ok(saved ? saved->toJson() : Json::nullValue, "updated"));
     } catch (const core::NotFoundError& e) {
         cb(core::Result::notFound(e.what()));
@@ -102,6 +125,11 @@ drogon::AsyncTask MenuController::remove(
             co_return;
         }
         RbacService::instance().invalidateAll();
+        co_await audit::AuditService::instance().record(
+            req,
+            "menu.delete",
+            "menu",
+            std::to_string(id));
         cb(core::Result::ok(Json::nullValue, "deleted"));
     } catch (const core::ConflictError& e) {
         cb(core::Result::fail(4091, e.what(), drogon::k409Conflict));

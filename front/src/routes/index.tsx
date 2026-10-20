@@ -10,6 +10,7 @@ const ProfilePage = lazy(() => import('../pages/profile/ProfilePage'))
 const UserListPage = lazy(() => import('../pages/admin/users/UserListPage'))
 const RoleListPage = lazy(() => import('../pages/admin/roles/RoleListPage'))
 const MenuListPage = lazy(() => import('../pages/admin/menus/MenuListPage'))
+const AuditLogPage = lazy(() => import('../pages/admin/audit/AuditLogPage'))
 const ForbiddenPage = lazy(() => import('../pages/error/ForbiddenPage'))
 const NotFoundPage = lazy(() => import('../pages/error/NotFoundPage'))
 
@@ -52,6 +53,9 @@ export default function AppRouter() {
               </Route>
               <Route element={<ProtectedRoute perm="menu:view" />}>
                 <Route path="/system/menus" element={<MenuListPage />} />
+              </Route>
+              <Route element={<ProtectedRoute perm="audit:view" />}>
+                <Route path="/system/audit-logs" element={<AuditLogPage />} />
               </Route>
 
               <Route path="*" element={<NotFoundPage />} />

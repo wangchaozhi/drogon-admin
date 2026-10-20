@@ -35,6 +35,17 @@ export type Permission = {
   type: 'menu' | 'button'
 }
 
+export type AuditLog = {
+  id: number
+  actor_user_id: number
+  action: string
+  target_type: string
+  target_id: string
+  request_id: string
+  details: Record<string, unknown>
+  created_at: number
+}
+
 export type LoginData = {
   token: string
   token_type: string

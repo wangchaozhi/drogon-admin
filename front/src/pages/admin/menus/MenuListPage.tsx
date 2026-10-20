@@ -62,7 +62,8 @@ function collectSubtreeIds(menu: Menu, ids = new Set<number>()): Set<number> {
 
 const iconOptions = [
   'DashboardOutlined', 'SettingOutlined', 'TeamOutlined', 'UserOutlined',
-  'MenuOutlined', 'SafetyOutlined', 'ProfileOutlined', 'AppstoreOutlined',
+  'MenuOutlined', 'SafetyOutlined', 'ProfileOutlined', 'FileSearchOutlined',
+  'AppstoreOutlined',
 ].map((v) => ({ label: v, value: v }))
 
 const typeOptions = [

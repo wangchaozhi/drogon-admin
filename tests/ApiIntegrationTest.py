@@ -197,12 +197,37 @@ def verify_migration_state(root: Path) -> None:
             "001_user_auth_security",
             "002_email_nocase",
             "003_rbac_foreign_keys",
+            "004_audit_logs",
         }
         if not expected_versions.issubset(versions):
             raise AssertionError(
                 "migration versions were not recorded: "
                 f"{sorted(expected_versions - versions)}"
             )
+        audit_columns = {
+            row[1] for row in database.execute(
+                "PRAGMA table_info(audit_logs)"
+            )
+        }
+        expected_audit_columns = {
+            "id",
+            "actor_user_id",
+            "action",
+            "target_type",
+            "target_id",
+            "request_id",
+            "details",
+            "created_at",
+        }
+        if not expected_audit_columns.issubset(audit_columns):
+            raise AssertionError("audit_logs schema is incomplete")
+        audit_indexes = {
+            row[1] for row in database.execute(
+                "PRAGMA index_list(audit_logs)"
+            )
+        }
+        if "idx_audit_logs_action_created" not in audit_indexes:
+            raise AssertionError("audit action index is missing")
 
 
 def wait_until_ready(base_url: str, process: subprocess.Popen[Any]) -> None:
@@ -406,6 +431,12 @@ def run_checks(base_url: str) -> None:
         "administrator login",
     )
     admin_token = str(admin_login["token"])
+    assert "audit:view" in admin_login["permissions"]
+    assert any(
+        child.get("path") == "/system/audit-logs"
+        for menu in admin_login["menus"]
+        for child in menu.get("children", [])
+    )
     me = expect_ok(
         request(base_url, "GET", "/api/users/me", token=admin_token),
         "authenticated profile",
@@ -501,6 +532,21 @@ def run_checks(base_url: str) -> None:
         400,
         "reject cyclic menu hierarchy",
     )
+    expect_ok(
+        request(
+            base_url,
+            "PUT",
+            f"/api/menus/{child_menu_id}",
+            {
+                "parent_id": parent_menu_id,
+                "name": "Scheduled Jobs",
+                "path": "/operations/jobs",
+                "type": "menu",
+            },
+            token=admin_token,
+        ),
+        "update child menu",
+    )
     expect_status(
         request(
             base_url,
@@ -561,10 +607,35 @@ def run_checks(base_url: str) -> None:
                 "password": operator_password,
             },
             token=admin_token,
+            headers={"X-Request-ID": "audit-create-operator-123"},
         ),
         "create operator",
     )
     operator_id = int(operator["id"])
+
+    disposable = expect_ok(
+        request(
+            base_url,
+            "POST",
+            "/api/users",
+            {
+                "name": "Disposable",
+                "email": "disposable@example.com",
+                "password": "Disposable-Horse-2026!",
+            },
+            token=admin_token,
+        ),
+        "create disposable user",
+    )
+    expect_ok(
+        request(
+            base_url,
+            "DELETE",
+            f"/api/users/{int(disposable['id'])}",
+            token=admin_token,
+        ),
+        "delete disposable user",
+    )
 
     expect_status(
         request(
@@ -595,6 +666,19 @@ def run_checks(base_url: str) -> None:
         "create operator role",
     )
     role_id = int(role["id"])
+    expect_ok(
+        request(
+            base_url,
+            "PUT",
+            f"/api/roles/{role_id}",
+            {
+                "name": "Security Operator Updated",
+                "description": "updated integration test role",
+            },
+            token=admin_token,
+        ),
+        "update operator role",
+    )
     expect_status(
         request(
             base_url,
@@ -648,6 +732,22 @@ def run_checks(base_url: str) -> None:
         "operator login",
     )
     operator_token = str(operator_login["token"])
+    assert "audit:view" not in operator_login["permissions"]
+    assert not any(
+        child.get("path") == "/system/audit-logs"
+        for menu in operator_login["menus"]
+        for child in menu.get("children", [])
+    )
+    expect_status(
+        request(
+            base_url,
+            "GET",
+            "/api/audit-logs",
+            token=operator_token,
+        ),
+        403,
+        "deny audit logs without audit:view",
+    )
 
     last_admin_update = {
         "name": "Admin",
@@ -877,6 +977,81 @@ def run_checks(base_url: str) -> None:
             token=admin_token,
         ),
         "delete custom role with foreign keys enabled",
+    )
+
+    expect_status(
+        request(
+            base_url,
+            "GET",
+            "/api/audit-logs?page_size=201",
+            token=admin_token,
+        ),
+        400,
+        "reject excessive audit page size",
+    )
+    audit_page = expect_ok(
+        request(
+            base_url,
+            "GET",
+            "/api/audit-logs?page=1&page_size=200",
+            token=admin_token,
+        ),
+        "list audit logs",
+    )
+    assert int(audit_page["total"]) == len(audit_page["items"])
+    actions = {entry["action"] for entry in audit_page["items"]}
+    expected_actions = {
+        "user.create",
+        "user.update",
+        "user.delete",
+        "user.assign_roles",
+        "user.change_password",
+        "role.create",
+        "role.update",
+        "role.delete",
+        "role.assign_permissions",
+        "menu.create",
+        "menu.update",
+        "menu.delete",
+    }
+    assert expected_actions.issubset(actions)
+    operator_create = next(
+        entry
+        for entry in audit_page["items"]
+        if entry["action"] == "user.create"
+        and int(entry["target_id"]) == operator_id
+    )
+    assert operator_create["actor_user_id"] == admin_id
+    assert operator_create["request_id"] == "audit-create-operator-123"
+
+    serialized_details = json.dumps(
+        [entry["details"] for entry in audit_page["items"]],
+        ensure_ascii=False,
+    )
+    for secret in {
+        admin_password,
+        operator_password,
+        new_operator_password,
+        self_changed_password,
+        "Disposable-Horse-2026!",
+        admin_token,
+        operator_token,
+    }:
+        assert secret not in serialized_details
+
+    role_delete_logs = expect_ok(
+        request(
+            base_url,
+            "GET",
+            "/api/audit-logs?action=role.delete",
+            token=admin_token,
+        ),
+        "filter audit logs by action",
+    )
+    assert role_delete_logs["items"]
+    assert all(
+        entry["action"] == "role.delete"
+        for entry in role_delete_logs["items"]
     )
 
 

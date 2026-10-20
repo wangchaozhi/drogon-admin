@@ -12,6 +12,7 @@ import {
   MenuOutlined,
   SafetyOutlined,
   ProfileOutlined,
+  FileSearchOutlined,
 } from '@ant-design/icons'
 import type { Menu as RbacMenu } from '../api/types'
 
@@ -24,6 +25,7 @@ const iconMap: Record<string, React.ReactNode> = {
   MenuOutlined: <MenuOutlined />,
   SafetyOutlined: <SafetyOutlined />,
   ProfileOutlined: <ProfileOutlined />,
+  FileSearchOutlined: <FileSearchOutlined />,
   // 小写别名
   dashboard: <DashboardOutlined />,
   setting: <SettingOutlined />,
@@ -32,6 +34,7 @@ const iconMap: Record<string, React.ReactNode> = {
   menu: <MenuOutlined />,
   safety: <SafetyOutlined />,
   profile: <ProfileOutlined />,
+  audit: <FileSearchOutlined />,
 }
 
 type ItemType = NonNullable<MenuProps['items']>[number]

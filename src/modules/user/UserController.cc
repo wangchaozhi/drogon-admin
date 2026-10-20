@@ -8,6 +8,7 @@
 #include "dto/LoginReq.h"
 #include "dto/UpdateUserReq.h"
 #include "common/TimeUtil.h"
+#include "modules/audit/AuditService.h"
 #include "modules/rbac/RbacService.h"
 #include "modules/rbac/dto/RbacReq.h"
 #include "filters/PermissionRegistry.h"
@@ -63,6 +64,17 @@ drogon::AsyncTask UserController::registerUser(
     }
     try {
         auto u = co_await svc_.registerPublic(*reqDto);
+        Json::Value details;
+        details["name"] = u.name;
+        details["email"] = u.email;
+        details["source"] = "public_registration";
+        co_await audit::AuditService::instance().record(
+            req,
+            "user.create",
+            "user",
+            std::to_string(u.id),
+            std::move(details),
+            u.id);
         APP_LOG_INFO << "user created id=" << u.id;
         cb(core::Result::ok(u.toJson(), "created"));
     } catch (const RegistrationClosedError& e) {
@@ -94,6 +106,16 @@ drogon::AsyncTask UserController::adminCreate(
     }
     try {
         auto u = co_await svc_.create(*reqDto);
+        Json::Value details;
+        details["name"] = u.name;
+        details["email"] = u.email;
+        details["source"] = "admin";
+        co_await audit::AuditService::instance().record(
+            req,
+            "user.create",
+            "user",
+            std::to_string(u.id),
+            std::move(details));
         APP_LOG_INFO << "admin create user id=" << u.id << " email=" << u.email;
         cb(core::Result::ok(u.toJson(), "created"));
     } catch (const std::exception& e) {
@@ -136,6 +158,17 @@ drogon::AsyncTask UserController::update(
             cb(core::Result::notFound("user not found"));
             co_return;
         }
+        Json::Value details;
+        details["name"] = u->name;
+        details["email"] = u->email;
+        details["disabled"] = u->disabled;
+        details["password_changed"] = reqDto->password.has_value();
+        co_await audit::AuditService::instance().record(
+            req,
+            "user.update",
+            "user",
+            std::to_string(id),
+            std::move(details));
         APP_LOG_INFO << "user updated id=" << u->id << " email=" << u->email;
         cb(core::Result::ok(u->toJson(), "updated"));
     } catch (const core::ConflictError& e) {
@@ -250,6 +283,14 @@ drogon::AsyncTask UserController::changePassword(
     try {
         co_await svc_.changePassword(
             attrs->get<int64_t>("userId"), std::move(*request));
+        Json::Value details;
+        details["password_changed"] = true;
+        co_await audit::AuditService::instance().record(
+            req,
+            "user.change_password",
+            "user",
+            std::to_string(attrs->get<int64_t>("userId")),
+            std::move(details));
         cb(core::Result::ok(
             Json::nullValue, "password changed; please sign in again"));
     } catch (const CurrentPasswordInvalidError& exception) {
@@ -356,6 +397,11 @@ drogon::AsyncTask UserController::remove(
             co_return;
         }
         rbac::RbacService::instance().invalidateUser(id);
+        co_await audit::AuditService::instance().record(
+            req,
+            "user.delete",
+            "user",
+            std::to_string(id));
         cb(core::Result::ok(Json::nullValue, "deleted"));
     } catch (const core::ConflictError& e) {
         cb(core::Result::fail(4091, e.what(), drogon::k409Conflict));
@@ -392,6 +438,17 @@ drogon::AsyncTask UserController::setRoles(
     try {
         co_await rbac::RbacService::instance().repo().setUserRoles(id, r->ids);
         rbac::RbacService::instance().invalidateUser(id);
+        Json::Value details;
+        Json::Value roleIds(Json::arrayValue);
+        for (const auto roleId : r->ids)
+            roleIds.append(static_cast<Json::Int64>(roleId));
+        details["role_ids"] = std::move(roleIds);
+        co_await audit::AuditService::instance().record(
+            req,
+            "user.assign_roles",
+            "user",
+            std::to_string(id),
+            std::move(details));
         cb(core::Result::ok(Json::nullValue, "ok"));
     } catch (const core::ConflictError& e) {
         cb(core::Result::fail(4091, e.what(), drogon::k409Conflict));

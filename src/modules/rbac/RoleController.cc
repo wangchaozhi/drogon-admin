@@ -6,6 +6,7 @@
 #include "core/Result.h"
 #include "core/Logger.h"
 #include "filters/PermissionRegistry.h"
+#include "modules/audit/AuditService.h"
 
 namespace modules::rbac {
 
@@ -49,6 +50,16 @@ drogon::AsyncTask RoleController::create(
         }
         auto saved = co_await RbacService::instance().repo().createRole(*r);
         RbacService::instance().invalidateAll();
+        Json::Value details;
+        details["code"] = saved.code;
+        details["name"] = saved.name;
+        details["description"] = saved.description;
+        co_await audit::AuditService::instance().record(
+            req,
+            "role.create",
+            "role",
+            std::to_string(saved.id),
+            std::move(details));
         cb(core::Result::ok(saved.toJson(), "created"));
     } catch (const std::exception& e) {
         cb(core::internalError(req, "create role", e, 5003));
@@ -72,6 +83,15 @@ drogon::AsyncTask RoleController::update(
         }
         RbacService::instance().invalidateAll();
         auto saved = co_await RbacService::instance().repo().getRole(id);
+        Json::Value details;
+        details["name"] = r->name;
+        details["description"] = r->description;
+        co_await audit::AuditService::instance().record(
+            req,
+            "role.update",
+            "role",
+            std::to_string(id),
+            std::move(details));
         cb(core::Result::ok(saved ? saved->toJson() : Json::nullValue, "updated"));
     } catch (const std::exception& e) {
         cb(core::internalError(req, "update role", e, 5003));
@@ -89,6 +109,11 @@ drogon::AsyncTask RoleController::remove(
             co_return;
         }
         RbacService::instance().invalidateAll();
+        co_await audit::AuditService::instance().record(
+            req,
+            "role.delete",
+            "role",
+            std::to_string(id));
         cb(core::Result::ok(Json::nullValue, "deleted"));
     } catch (const core::ConflictError& e) {
         cb(core::Result::fail(4091, e.what(), drogon::k409Conflict));
@@ -125,6 +150,17 @@ drogon::AsyncTask RoleController::setPerms(
     try {
         co_await RbacService::instance().repo().setRolePermissions(id, r->ids);
         RbacService::instance().invalidateAll();
+        Json::Value details;
+        Json::Value permissionIds(Json::arrayValue);
+        for (const auto permissionId : r->ids)
+            permissionIds.append(static_cast<Json::Int64>(permissionId));
+        details["permission_ids"] = std::move(permissionIds);
+        co_await audit::AuditService::instance().record(
+            req,
+            "role.assign_permissions",
+            "role",
+            std::to_string(id),
+            std::move(details));
         cb(core::Result::ok(Json::nullValue, "ok"));
     } catch (const core::ConflictError& e) {
         cb(core::Result::fail(4091, e.what(), drogon::k409Conflict));

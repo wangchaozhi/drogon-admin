@@ -69,6 +69,26 @@ CREATE TABLE IF NOT EXISTS role_permissions (
     FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    actor_user_id INTEGER NOT NULL,
+    action        TEXT    NOT NULL,
+    target_type   TEXT    NOT NULL,
+    target_id     TEXT    NOT NULL,
+    request_id    TEXT    NOT NULL,
+    details       TEXT    NOT NULL DEFAULT '{}',
+    created_at    INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at
+    ON audit_logs(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action_created
+    ON audit_logs(action, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_created
+    ON audit_logs(actor_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_target
+    ON audit_logs(target_type, target_id, created_at DESC);
+
 -- ===================== 种子数据 =====================
 
 -- 角色
@@ -82,6 +102,9 @@ INSERT OR IGNORE INTO menus (id, parent_id, name, path, icon, component, sort, t
 INSERT OR IGNORE INTO menus (id, parent_id, name, path, icon, component, sort, type, visible, created_at) VALUES (4, 2, '角色管理',  '/system/roles',  'SafetyOutlined',    'RoleListPage',   22, 'menu', 1, 0);
 INSERT OR IGNORE INTO menus (id, parent_id, name, path, icon, component, sort, type, visible, created_at) VALUES (5, 2, '菜单管理',  '/system/menus',  'MenuOutlined',      'MenuListPage',   23, 'menu', 1, 0);
 INSERT OR IGNORE INTO menus (id, parent_id, name, path, icon, component, sort, type, visible, created_at) VALUES (6, 0, '个人中心',  '/profile',       'UserOutlined',      'ProfilePage',    90, 'menu', 1, 0);
+INSERT INTO menus (parent_id, name, path, icon, component, sort, type, visible, created_at)
+SELECT 2, '审计日志', '/system/audit-logs', 'FileSearchOutlined', 'AuditLogPage', 24, 'menu', 1, 0
+WHERE NOT EXISTS (SELECT 1 FROM menus WHERE path = '/system/audit-logs');
 
 -- 权限：menu 类型 + 按钮类型
 INSERT OR IGNORE INTO permissions (code, name, type, menu_id, created_at) VALUES ('dashboard:view', '仪表盘-查看', 'menu',   1, 0);
@@ -105,6 +128,9 @@ INSERT OR IGNORE INTO permissions (code, name, type, menu_id, created_at) VALUES
 INSERT OR IGNORE INTO permissions (code, name, type, menu_id, created_at) VALUES ('menu:delete', '菜单-删除', 'button', 5, 0);
 
 INSERT OR IGNORE INTO permissions (code, name, type, menu_id, created_at) VALUES ('profile:view', '个人中心', 'menu', 6, 0);
+INSERT OR IGNORE INTO permissions (code, name, type, menu_id, created_at)
+SELECT 'audit:view', '审计日志-查看', 'menu', id, 0
+FROM menus WHERE path = '/system/audit-logs' ORDER BY id LIMIT 1;
 
 -- admin 授予所有权限
 INSERT OR IGNORE INTO role_permissions (role_id, permission_id)

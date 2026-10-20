@@ -28,9 +28,10 @@ drogon-admin/
 │           ├── RbacService         # RBAC 业务逻辑 + 缓存（协程）
 │           ├── RbacRepository      # RBAC 数据访问（协程）
 │           └── dto/                # RBAC DTO
+│       └── audit/                   # 审计日志 Controller / Repository / DTO
 ├── front/                      # 前端（React 19 + Vite + Ant Design 6 + React Router）
 │   └── src/
-│       ├── pages/              # 页面：login / dashboard / profile / admin（users/roles/menus）/ error
+│       ├── pages/              # 页面：login / dashboard / profile / admin（users/roles/menus/audit）/ error
 │       ├── layouts/            # AdminLayout（侧边栏 + 顶部栏）
 │       ├── routes/             # 基于权限的嵌套路由（ProtectedRoute）
 │       ├── components/         # AppHeader / DynamicMenu / HasPerm
@@ -113,6 +114,10 @@ drogon-admin.exe
 唯一索引阻止仅大小写不同的重复账号。
 管理员可在用户编辑页启用或禁用账号；修改邮箱、密码、状态或角色都会吊销该用户的现有 token。
 系统以事务保护最后一个可用管理员，禁止删除、禁用或移除其管理员角色；内置 `admin` 角色具备系统级超级权限，且内置角色不可删除、管理员权限映射不可手工修改。
+用户、角色和菜单的关键写操作以及自助改密会写入不可随主体删除的审计日志，
+记录操作者、操作类型、目标、请求 ID、时间和经过白名单筛选的安全详情。
+审计写入采用 best-effort 语义：失败会在服务端输出醒目告警，但不会把已经成功
+的主业务响应改成失败；密码、密码哈希和 Token 永不写入审计详情。
 未预期的数据库和服务端异常只向客户端返回通用错误，详细原因与请求 ID
 仅写入服务端日志，避免泄漏 SQL 和内部结构。用户列表分页限制为每页最多
 200 条，并严格拒绝非法页码、超长关键字和非整数参数。
@@ -196,6 +201,7 @@ npm run preview      REM 预览生产构建
 | PUT    | /api/menus/{id}                    | 是   | menu:update  | 更新菜单                |
 | DELETE | /api/menus/{id}                    | 是   | menu:delete  | 删除菜单                |
 | GET    | /api/permissions                   | 是   | —            | 权限列表                |
+| GET    | /api/audit-logs                    | 是   | audit:view   | 分页/按操作类型查询审计 |
 
 测试：
 
@@ -203,7 +209,7 @@ npm run preview      REM 预览生产构建
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-CTest 会启动临时 Drogon 实例和独立 SQLite 数据库，黑盒验证注册/登录、密码与角色变更后的 token 吊销、登录锁定、最后管理员保护、内置角色保护以及 CORS/安全响应头。测试不会读写开发数据库。
+CTest 会启动临时 Drogon 实例和独立 SQLite 数据库，黑盒验证注册/登录、密码与角色变更后的 token 吊销、登录锁定、最后管理员保护、内置角色保护、审计权限/记录/敏感数据隔离以及 CORS/安全响应头。测试不会读写开发数据库。
 
 手工调用示例：
 
@@ -260,6 +266,8 @@ ADD_METHOD_TO(UserController::create, "/api/users",
   各状态码类别请求数和请求耗时直方图。该端点不包含用户或路径标签，避免
   敏感信息及高基数指标；生产环境应继续通过 Compose 的 localhost 绑定或
   反向代理访问控制将其限制在监控网络。
+- 审计查询由 `audit:view` 保护，默认仅 `admin` 拥有；普通 `user` 不会获得
+  审计菜单或权限。支持 `page`、`page_size` 与精确 `action` 查询参数。
 
 ## 首个注册用户自动晋升管理员
 
@@ -285,6 +293,8 @@ ADD_METHOD_TO(UserController::create, "/api/users",
 - RBAC 关联表使用外键约束，用户删除会级联清理角色映射，角色删除前必须先
   清理用户映射，防止产生孤儿权限记录
 - schema 内置种子数据：默认角色 `admin`（全部权限）与 `user`（仅仪表盘+个人中心）
+- `audit_logs` 按时间、操作、操作者和目标建立索引；不关联用户外键，以便账号
+  或角色删除后仍保留追责链路
 - `config/config.json` 中 `db_clients` 段控制连接参数；SQLite 写为单连接更稳妥：
   ```json
   "db_clients": [{
