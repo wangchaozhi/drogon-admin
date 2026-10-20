@@ -18,5 +18,6 @@ int main() {
 
     core::Bootstrap::init("config/config.json");
     drogon::app().run();
+    core::Bootstrap::shutdown();
     return 0;
 }

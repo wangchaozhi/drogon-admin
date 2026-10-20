@@ -1,6 +1,8 @@
 #include "Bootstrap.h"
+#include "Lifecycle.h"
 #include "Logger.h"
 #include "Metrics.h"
+#include "Result.h"
 #include "common/CryptoUtil.h"
 #include "filters/CorsFilter.h"
 #include <drogon/drogon.h>
@@ -9,6 +11,7 @@
 #include <trantor/utils/Logger.h>
 #include <algorithm>
 #include <cctype>
+#include <csignal>
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
@@ -55,6 +58,7 @@ void prepareRequest(const drogon::HttpRequestPtr& req) {
     attrs->insert("requestId", std::move(requestId));
     attrs->insert("requestStartedAtMicros", steadyNowMicros());
     Metrics::instance().requestStarted();
+    Lifecycle::instance().requestStarted();
 }
 
 void completeRequest(const drogon::HttpRequestPtr& req,
@@ -72,6 +76,7 @@ void completeRequest(const drogon::HttpRequestPtr& req,
     resp->addHeader("X-Request-ID", requestId);
     Metrics::instance().requestCompleted(
         static_cast<int>(resp->statusCode()), elapsedMicros);
+    Lifecycle::instance().requestCompleted();
 
     std::ostringstream details;
     details << "request completed request_id=" << requestId
@@ -401,6 +406,7 @@ public:
     void push(const char* msg, uint64_t len) {
         {
             std::lock_guard<std::mutex> lk(mu_);
+            if (stopping_) return;
             // 背压保护：队列堆积过多时丢弃最旧日志，避免内存无限膨胀
             if (queued_bytes_ > kMaxQueueBytes) {
                 while (!queue_.empty() && queued_bytes_ > kMaxQueueBytes / 2) {
@@ -418,10 +424,23 @@ public:
         cv_.notify_one();
     }
 
+    void shutdown() {
+        {
+            std::lock_guard<std::mutex> lk(mu_);
+            if (stopping_) return;
+            stopping_ = true;
+        }
+        cv_.notify_one();
+        if (worker_.joinable()) worker_.join();
+    }
+
 private:
     AsyncConsoleSink() {
         worker_ = std::thread([this] { loop(); });
-        worker_.detach();   // 随进程退出，不阻塞 shutdown
+    }
+
+    ~AsyncConsoleSink() {
+        shutdown();
     }
 
     void loop() {
@@ -429,7 +448,10 @@ private:
         for (;;) {
             {
                 std::unique_lock<std::mutex> lk(mu_);
-                cv_.wait(lk, [this] { return !queue_.empty(); });
+                cv_.wait(
+                    lk,
+                    [this] { return stopping_ || !queue_.empty(); });
+                if (queue_.empty() && stopping_) break;
                 local.swap(queue_);
                 queued_bytes_ = 0;
             }
@@ -445,6 +467,7 @@ private:
     std::condition_variable cv_;
     std::deque<std::string> queue_;
     size_t                  queued_bytes_{0};
+    bool                    stopping_{false};
     std::thread             worker_;
     static constexpr size_t kMaxQueueBytes = 32 * 1024 * 1024; // 32 MB
 };
@@ -471,6 +494,72 @@ static void setupDualLogging() {
         });
 }
 
+static_assert(
+    std::atomic<std::sig_atomic_t>::is_always_lock_free,
+    "signal coordination requires lock-free sig_atomic_t");
+std::atomic<std::sig_atomic_t> shutdownSignal{0};
+std::atomic<bool> stopShutdownCoordinator{false};
+std::thread shutdownCoordinator;
+
+void recordShutdownSignal(std::sig_atomic_t signalCode) noexcept {
+    // Drogon invokes this callback directly from the OS signal handler.
+    // Keep it async-signal-safe: only use a lock-free atomic here.
+    std::sig_atomic_t expected = 0;
+    if (!shutdownSignal.compare_exchange_strong(
+            expected,
+            signalCode,
+            std::memory_order_relaxed)) {
+        shutdownSignal.store(3, std::memory_order_relaxed);
+    }
+}
+
+void runShutdownCoordinator() {
+    while (!stopShutdownCoordinator.load(std::memory_order_acquire)
+           && shutdownSignal.load(std::memory_order_relaxed) == 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (stopShutdownCoordinator.load(std::memory_order_acquire)) return;
+
+    const auto firstSignal =
+        shutdownSignal.load(std::memory_order_relaxed);
+    const char* signalName = firstSignal == 2 ? "SIGINT" : "SIGTERM";
+    auto& lifecycle = Lifecycle::instance();
+    if (!lifecycle.beginDraining()) return;
+
+    const auto graceSeconds = lifecycle.gracePeriodSeconds();
+    APP_LOG_WARN << "graceful shutdown started signal=" << signalName
+                 << " grace_seconds=" << graceSeconds
+                 << " active_requests=" << lifecycle.activeRequests();
+
+    const auto deadline = std::chrono::steady_clock::now()
+        + std::chrono::seconds(graceSeconds);
+    bool drained = lifecycle.activeRequests() == 0;
+    while (!drained
+           && shutdownSignal.load(std::memory_order_relaxed) != 3
+           && std::chrono::steady_clock::now() < deadline) {
+        drained = lifecycle.waitUntilDrained(
+            std::chrono::milliseconds(50));
+    }
+
+    if (shutdownSignal.load(std::memory_order_relaxed) == 3) {
+        APP_LOG_WARN << "second shutdown signal received; "
+                        "forcing immediate stop";
+    } else if (drained) {
+        APP_LOG_INFO << "graceful shutdown drained all requests";
+    } else {
+        APP_LOG_WARN
+            << "graceful shutdown deadline reached active_requests="
+            << lifecycle.activeRequests();
+    }
+    lifecycle.markStopped();
+    drogon::app().quit();
+}
+
+void startShutdownCoordinator() {
+    stopShutdownCoordinator.store(false, std::memory_order_release);
+    shutdownCoordinator = std::thread(runShutdownCoordinator);
+}
+
 void Bootstrap::init(const std::string& configPath) {
     // 先确保配置中引用的相对目录存在，否则 Drogon 会因 "Log path does not exist" 退出
     {
@@ -488,10 +577,27 @@ void Bootstrap::init(const std::string& configPath) {
     setupDualLogging();
 
     ensureDbDirAndSchema();
+    app.setTermSignalHandler(
+        [] { recordShutdownSignal(1); });
+    app.setIntSignalHandler(
+        [] { recordShutdownSignal(2); });
 
     // CORS 必须覆盖 404/鉴权失败等所有响应，因此使用全局 advice，而非逐路由挂 Filter。
     app.registerSyncAdvice([](const drogon::HttpRequestPtr& req) {
         prepareRequest(req);
+        if (Lifecycle::instance().isDraining()
+            && req->getPath() != "/api/health"
+            && req->getPath() != "/api/ready"
+            && req->getPath() != "/api/metrics") {
+            auto resp = Result::fail(
+                5031,
+                "service is shutting down",
+                drogon::k503ServiceUnavailable);
+            resp->addHeader("Connection", "close");
+            resp->addHeader("Retry-After", "1");
+            completeRequest(req, resp);
+            return resp;
+        }
         if (filters::CorsFilter::isPreflight(req)) {
             auto resp = filters::CorsFilter::handlePreflight(req);
             completeRequest(req, resp);
@@ -508,10 +614,22 @@ void Bootstrap::init(const std::string& configPath) {
 
     // 启动 banner
     app.registerBeginningAdvice([]() {
+        startShutdownCoordinator();
+        Lifecycle::instance().markReady();
         APP_LOG_INFO << "============================================";
         APP_LOG_INFO << "  drogon-admin started (Drogon + SQLite modular)";
         APP_LOG_INFO << "============================================";
     });
+}
+
+void Bootstrap::shutdown() {
+    stopShutdownCoordinator.store(true, std::memory_order_release);
+    if (shutdownCoordinator.joinable()) shutdownCoordinator.join();
+    Lifecycle::instance().markStopped();
+    APP_LOG_INFO << "drogon-admin stopped";
+    getAsyncFileLogger().flush();
+    AsyncConsoleSink::instance().shutdown();
+    getAsyncFileLogger().flush();
 }
 
 } // namespace core

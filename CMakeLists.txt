@@ -69,6 +69,7 @@ add_custom_command(TARGET drogon-admin POST_BUILD
 include(CTest)
 if(BUILD_TESTING)
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    find_package(Threads REQUIRED)
 
     add_executable(crypto-util-test tests/CryptoUtilTest.cc)
     target_include_directories(crypto-util-test PRIVATE src)
@@ -78,6 +79,16 @@ if(BUILD_TESTING)
         ${ARGON2_TARGET}
     )
     add_test(NAME crypto-util-test COMMAND crypto-util-test)
+
+    add_executable(
+        lifecycle-test
+        tests/LifecycleTest.cc
+        src/core/Lifecycle.cc
+    )
+    target_include_directories(lifecycle-test PRIVATE src)
+    target_link_libraries(lifecycle-test PRIVATE Threads::Threads)
+    add_test(NAME lifecycle-test COMMAND lifecycle-test)
+
     add_test(
         NAME release-version-test
         COMMAND "${Python3_EXECUTABLE}"

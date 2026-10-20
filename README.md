@@ -161,6 +161,20 @@ Compose 默认仅绑定 `127.0.0.1`，应由同机反向代理提供公网 HTTPS
 日志和上传目录分别保存在命名卷中；升级前应备份数据卷。容器健康检查调用
 `/api/ready`，而 `/api/health` 仅用于进程存活检查。
 
+### 优雅停机与流量摘除
+
+收到 `SIGTERM` 或 `SIGINT` 后，服务立即进入 `draining`：`/api/ready` 返回
+503，普通业务请求返回 503 与 `Retry-After`，但 `/api/health` 和
+`/api/metrics` 在排空期间仍可用于诊断。进程会等待已进入处理链的请求完成，
+随后停止 Drogon 并排空异步控制台日志；超过截止时间则记录剩余请求数并强制
+退出。再次发送停机信号会跳过等待。
+
+默认排空时间为 10 秒，可通过 `DROGON_SHUTDOWN_GRACE_SECONDS`（1–300）调整；
+它必须小于容器编排器的强杀期限。`compose.yml` 已设置 15 秒
+`stop_grace_period`，为默认排空和日志收尾预留 5 秒。部署到 Kubernetes 时，
+应分别将 `/api/ready` 配为 readinessProbe、`/api/health` 配为 livenessProbe，
+并确保 `terminationGracePeriodSeconds` 大于应用排空时间。
+
 ### SQLite 在线备份与恢复演练
 
 不要直接复制运行中的 `drogon-admin.db`：WAL 中可能仍有未 checkpoint 的已提交
@@ -301,7 +315,7 @@ ADD_METHOD_TO(UserController::create, "/api/users",
 - 每个请求接受或生成 `X-Request-ID`，响应原样返回；结构化访问日志包含 request ID、方法、路径、状态码、耗时微秒和已认证用户 ID，便于反向代理与应用日志关联。
 - 已应用迁移记录在 `schema_migrations`；每个迁移在 `BEGIN IMMEDIATE` 事务中执行，失败会回滚并阻止服务进入就绪状态。记录同时保存 SQL 文件标准化换行后的 SHA-256 校验和，后续启动会拒绝被修改或缺失的历史迁移，防止环境间静默漂移；已发布迁移必须保持不可变，更正只能新增迁移文件。
 - `/api/metrics` 输出 Prometheus 文本格式，包含构建版本、运行时长、活动请求数、
-  各状态码类别请求数和请求耗时直方图。该端点不包含用户或路径标签，避免
+  就绪/排空状态、各状态码类别请求数和请求耗时直方图。该端点不包含用户或路径标签，避免
   敏感信息及高基数指标；生产环境应继续通过 Compose 的 localhost 绑定或
   反向代理访问控制将其限制在监控网络。
 - 审计查询由 `audit:view` 保护，默认仅 `admin` 拥有；普通 `user` 不会获得

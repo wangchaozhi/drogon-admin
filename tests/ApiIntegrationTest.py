@@ -142,6 +142,7 @@ def write_config(root: Path, port: int) -> None:
             "cors_allow_credentials": False,
             "cors_max_age_seconds": 600,
             "enable_hsts": True,
+            "shutdown_grace_seconds": 10,
         },
     }
     (root / "config").mkdir(parents=True)
@@ -391,6 +392,7 @@ def run_checks(base_url: str) -> None:
     assert health[2].get("X-Request-ID") == "integration-request-123"
     assert health[2].get("Cache-Control") == "no-store"
     assert "camera=()" in health[2].get("Permissions-Policy", "")
+    assert health[1]["data"]["lifecycle"] == "ready"
 
     ready = expect_ok(
         request(base_url, "GET", "/api/ready"),
@@ -413,6 +415,8 @@ def run_checks(base_url: str) -> None:
     assert 'version="unknown"' not in metrics[1]
     assert "drogon_admin_http_requests_total" in metrics[1]
     assert "drogon_admin_http_request_duration_seconds_bucket" in metrics[1]
+    assert "drogon_admin_service_ready 1" in metrics[1]
+    assert "drogon_admin_service_draining 0" in metrics[1]
     assert metrics[2].get_content_type() == "text/plain"
     assert metrics[2].get("Cache-Control") == "no-store"
 
@@ -1269,6 +1273,14 @@ def main() -> int:
                 raise
             finally:
                 stop_process(process)
+
+        if os.name != "nt":
+            shutdown_log = log_path.read_text(
+                encoding="utf-8", errors="replace"
+            )
+            assert "graceful shutdown started signal=SIGTERM" in shutdown_log
+            assert "graceful shutdown drained all requests" in shutdown_log
+            assert "drogon-admin stopped" in shutdown_log
 
         # Existing installations have schema_migrations without a checksum
         # column. The upgrade must add it and establish a checksum baseline.

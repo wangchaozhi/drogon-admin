@@ -1,4 +1,5 @@
 #include "Metrics.h"
+#include "Lifecycle.h"
 
 #include <algorithm>
 #include <iomanip>
@@ -59,6 +60,16 @@ std::string Metrics::renderPrometheus() const {
                std::chrono::steady_clock::now() - startedAt_)
                .count()
         << '\n'
+        << "# HELP drogon_admin_service_ready "
+           "Whether the service accepts normal traffic.\n"
+        << "# TYPE drogon_admin_service_ready gauge\n"
+        << "drogon_admin_service_ready "
+        << (Lifecycle::instance().isReady() ? 1 : 0) << '\n'
+        << "# HELP drogon_admin_service_draining "
+           "Whether graceful shutdown is draining requests.\n"
+        << "# TYPE drogon_admin_service_draining gauge\n"
+        << "drogon_admin_service_draining "
+        << (Lifecycle::instance().isDraining() ? 1 : 0) << '\n'
         << "# HELP drogon_admin_http_requests_active "
            "Requests currently being processed.\n"
         << "# TYPE drogon_admin_http_requests_active gauge\n"

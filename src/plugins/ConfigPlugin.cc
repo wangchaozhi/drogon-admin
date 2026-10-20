@@ -1,4 +1,5 @@
 #include "ConfigPlugin.h"
+#include "core/Lifecycle.h"
 #include "core/Logger.h"
 #include <drogon/drogon.h>
 #include <openssl/rand.h>
@@ -152,6 +153,10 @@ void ConfigPlugin::initAndStart(const Json::Value& /*pluginCfg*/) {
         "DROGON_CORS_MAX_AGE_SECONDS", corsMaxAgeSeconds_);
     hstsEnabled_ = boolEnvOrDefault(
         "DROGON_ENABLE_HSTS", hstsEnabled_);
+    if (custom.isMember("shutdown_grace_seconds"))
+        shutdownGraceSeconds_ = custom["shutdown_grace_seconds"].asInt();
+    shutdownGraceSeconds_ = intEnvOrDefault(
+        "DROGON_SHUTDOWN_GRACE_SECONDS", shutdownGraceSeconds_);
 
     if (jwtExpireSec_ < 300 || jwtExpireSec_ > 86400)
         throw std::runtime_error(
@@ -171,6 +176,9 @@ void ConfigPlugin::initAndStart(const Json::Value& /*pluginCfg*/) {
     if (corsMaxAgeSeconds_ < 0 || corsMaxAgeSeconds_ > 86400)
         throw std::runtime_error(
             "cors_max_age_seconds must be between 0 and 86400");
+    if (shutdownGraceSeconds_ < 1 || shutdownGraceSeconds_ > 300)
+        throw std::runtime_error(
+            "shutdown_grace_seconds must be between 1 and 300");
 
     std::sort(corsAllowedOrigins_.begin(), corsAllowedOrigins_.end());
     corsAllowedOrigins_.erase(
@@ -202,6 +210,8 @@ void ConfigPlugin::initAndStart(const Json::Value& /*pluginCfg*/) {
                "will be invalid after restart";
     }
 
+    core::Lifecycle::instance().configureGracePeriod(
+        shutdownGraceSeconds_);
     APP_LOG_INFO << "ConfigPlugin loaded, environment=" << environment_
                  << ", jwtExpireSec=" << jwtExpireSec_
                  << ", registrationMode=" << registrationMode_
@@ -209,7 +219,8 @@ void ConfigPlugin::initAndStart(const Json::Value& /*pluginCfg*/) {
                  << ", loginLockSeconds=" << loginLockSeconds_
                  << ", corsOrigins=" << corsAllowedOrigins_.size()
                  << ", corsCredentials=" << corsAllowCredentials_
-                 << ", hsts=" << hstsEnabled_;
+                 << ", hsts=" << hstsEnabled_
+                 << ", shutdownGraceSeconds=" << shutdownGraceSeconds_;
     if (environment_ == "production" && !hstsEnabled_) {
         APP_LOG_WARN
             << "HSTS is disabled; enable it only when every public request "

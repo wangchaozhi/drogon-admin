@@ -28,6 +28,7 @@ public:
     bool corsAllowCredentials() const { return corsAllowCredentials_; }
     int corsMaxAgeSeconds() const { return corsMaxAgeSeconds_; }
     bool hstsEnabled() const { return hstsEnabled_; }
+    int shutdownGraceSeconds() const { return shutdownGraceSeconds_; }
 
 private:
     std::string jwtSecret_;
@@ -40,6 +41,7 @@ private:
     bool corsAllowCredentials_{false};
     int corsMaxAgeSeconds_{600};
     bool hstsEnabled_{false};
+    int shutdownGraceSeconds_{10};
 };
 
 } // namespace plugins

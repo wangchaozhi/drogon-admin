@@ -54,6 +54,7 @@
         "cors_allowed_origins": [],
         "cors_allow_credentials": false,
         "cors_max_age_seconds": 600,
-        "enable_hsts": false
+        "enable_hsts": false,
+        "shutdown_grace_seconds": 10
     }
 }

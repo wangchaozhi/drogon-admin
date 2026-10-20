@@ -11,6 +11,8 @@ class Bootstrap {
 public:
     // 读取 config/config.json 并执行启动前的初始化
     static void init(const std::string& configPath);
+    // run() 返回后排空异步日志并完成生命周期收尾
+    static void shutdown();
 };
 
 } // namespace core

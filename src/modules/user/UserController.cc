@@ -1,6 +1,7 @@
 #include "UserController.h"
 #include "core/DomainError.h"
 #include "core/ErrorHandler.h"
+#include "core/Lifecycle.h"
 #include "core/Result.h"
 #include "core/Logger.h"
 #include "dto/ChangePasswordReq.h"
@@ -549,6 +550,8 @@ void UserController::health(const drogon::HttpRequestPtr& /*req*/,
                             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
     Json::Value data;
     data["status"] = "ok";
+    data["lifecycle"] =
+        std::string(core::Lifecycle::instance().stateName());
     data["time"]   = common::TimeUtil::formatLocal(common::TimeUtil::nowSec());
     cb(core::Result::ok(std::move(data)));
 }
@@ -556,6 +559,13 @@ void UserController::health(const drogon::HttpRequestPtr& /*req*/,
 drogon::AsyncTask UserController::ready(
     drogon::HttpRequestPtr /*req*/,
     std::function<void(const drogon::HttpResponsePtr&)> cb) {
+    if (!core::Lifecycle::instance().isReady()) {
+        cb(core::Result::fail(
+            5030,
+            "service is not ready",
+            drogon::k503ServiceUnavailable));
+        co_return;
+    }
     try {
         auto db = drogon::app().getDbClient();
         if (!db) throw std::runtime_error("database client unavailable");
