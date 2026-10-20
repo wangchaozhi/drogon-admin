@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -169,6 +170,28 @@ def prepare_legacy_database(root: Path) -> None:
         database.commit()
 
 
+def prepare_legacy_migration_metadata(root: Path) -> None:
+    """Remove checksum metadata to emulate databases from older releases."""
+    with closing(
+        sqlite3.connect(root / "data" / "drogon-admin.db")
+    ) as database:
+        database.executescript(
+            """
+            ALTER TABLE schema_migrations
+                RENAME TO schema_migrations_with_checksum;
+            CREATE TABLE schema_migrations (
+                version TEXT PRIMARY KEY,
+                applied_at INTEGER NOT NULL
+            );
+            INSERT INTO schema_migrations(version,applied_at)
+                SELECT version,applied_at
+                FROM schema_migrations_with_checksum;
+            DROP TABLE schema_migrations_with_checksum;
+            """
+        )
+        database.commit()
+
+
 def verify_migration_state(root: Path) -> None:
     with closing(
         sqlite3.connect(root / "data" / "drogon-admin.db")
@@ -204,6 +227,32 @@ def verify_migration_state(root: Path) -> None:
                 "migration versions were not recorded: "
                 f"{sorted(expected_versions - versions)}"
             )
+        migration_columns = {
+            row[1]
+            for row in database.execute(
+                "PRAGMA table_info(schema_migrations)"
+            )
+        }
+        if "checksum" not in migration_columns:
+            raise AssertionError("migration checksum column is missing")
+        checksums = dict(
+            database.execute(
+                "SELECT version,checksum FROM schema_migrations"
+            )
+        )
+        for version in expected_versions:
+            migration_path = root / "sql" / "migrations" / f"{version}.sql"
+            migration_contents = migration_path.read_bytes()
+            migration_contents = migration_contents.replace(
+                b"\r\n", b"\n"
+            ).replace(b"\r", b"\n")
+            expected_checksum = hashlib.sha256(
+                migration_contents
+            ).hexdigest()
+            if checksums.get(version) != expected_checksum:
+                raise AssertionError(
+                    f"migration checksum is invalid: {version}"
+                )
         audit_columns = {
             row[1] for row in database.execute(
                 "PRAGMA table_info(audit_logs)"
@@ -253,6 +302,26 @@ def stop_process(process: subprocess.Popen[Any]) -> None:
     except subprocess.TimeoutExpired:
         process.kill()
         process.wait(timeout=5)
+
+
+def wait_for_startup_failure(
+    process: subprocess.Popen[Any],
+    log_path: Path,
+    expected_message: str,
+) -> None:
+    try:
+        return_code = process.wait(timeout=10)
+    except subprocess.TimeoutExpired as error:
+        raise AssertionError(
+            "server did not reject invalid migration state"
+        ) from error
+    if return_code == 0:
+        raise AssertionError("server unexpectedly accepted invalid migration state")
+    log = log_path.read_text(encoding="utf-8", errors="replace")
+    if expected_message not in log:
+        raise AssertionError(
+            f"startup failure did not contain {expected_message!r}:\n{log}"
+        )
 
 
 def run_checks(base_url: str) -> None:
@@ -1201,6 +1270,35 @@ def main() -> int:
             finally:
                 stop_process(process)
 
+        # Existing installations have schema_migrations without a checksum
+        # column. The upgrade must add it and establish a checksum baseline.
+        prepare_legacy_migration_metadata(root)
+        checksum_upgrade_log_path = root / "checksum-upgrade-server.log"
+        with checksum_upgrade_log_path.open(
+            "w", encoding="utf-8"
+        ) as checksum_upgrade_log:
+            process = subprocess.Popen(
+                [str(server)],
+                cwd=root,
+                env=env,
+                stdout=checksum_upgrade_log,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+            try:
+                wait_until_ready(base_url, process)
+                verify_migration_state(root)
+            except Exception:
+                checksum_upgrade_log.flush()
+                print(
+                    checksum_upgrade_log_path.read_text(
+                        encoding="utf-8", errors="replace"
+                    )
+                )
+                raise
+            finally:
+                stop_process(process)
+
         # Simulate an installation that already has every column from the
         # historical schema.sql but predates schema_migrations bookkeeping.
         with closing(
@@ -1235,6 +1333,36 @@ def main() -> int:
                     )
                 )
                 raise
+            finally:
+                stop_process(process)
+
+        # Applied migrations are immutable: changing even a comment must make
+        # startup fail before the service begins accepting requests.
+        migration_path = (
+            root / "sql" / "migrations" / "001_user_auth_security.sql"
+        )
+        migration_path.write_bytes(
+            migration_path.read_bytes()
+            + b"\n-- integration-test checksum mismatch\n"
+        )
+        mismatch_log_path = root / "checksum-mismatch-server.log"
+        with mismatch_log_path.open(
+            "w", encoding="utf-8"
+        ) as mismatch_log:
+            process = subprocess.Popen(
+                [str(server)],
+                cwd=root,
+                env=env,
+                stdout=mismatch_log,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+            try:
+                wait_for_startup_failure(
+                    process,
+                    mismatch_log_path,
+                    "migration checksum mismatch: 001_user_auth_security",
+                )
             finally:
                 stop_process(process)
 

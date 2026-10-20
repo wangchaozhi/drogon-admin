@@ -267,7 +267,7 @@ ADD_METHOD_TO(UserController::create, "/api/users",
 
 - 双路输出：`trantor::AsyncFileLogger` 写 `logs/drogon-admin.log`（自动按大小切片）+ 自定义 `AsyncConsoleSink` 后台线程刷 `stdout`，业务线程只入队，Windows QuickEdit"选中"阻塞 stdout 时不会拖住 HTTP 线程。
 - 每个请求接受或生成 `X-Request-ID`，响应原样返回；结构化访问日志包含 request ID、方法、路径、状态码、耗时微秒和已认证用户 ID，便于反向代理与应用日志关联。
-- 已应用迁移记录在 `schema_migrations`；每个迁移在 `BEGIN IMMEDIATE` 事务中执行，失败会回滚并阻止服务进入就绪状态。
+- 已应用迁移记录在 `schema_migrations`；每个迁移在 `BEGIN IMMEDIATE` 事务中执行，失败会回滚并阻止服务进入就绪状态。记录同时保存 SQL 文件标准化换行后的 SHA-256 校验和，后续启动会拒绝被修改或缺失的历史迁移，防止环境间静默漂移；已发布迁移必须保持不可变，更正只能新增迁移文件。
 - `/api/metrics` 输出 Prometheus 文本格式，包含构建版本、运行时长、活动请求数、
   各状态码类别请求数和请求耗时直方图。该端点不包含用户或路径标签，避免
   敏感信息及高基数指标；生产环境应继续通过 Compose 的 localhost 绑定或
@@ -294,6 +294,8 @@ ADD_METHOD_TO(UserController::create, "/api/users",
 
 - 默认使用 SQLite，数据库文件位于 `data/drogon-admin.db`（首次启动自动创建）
 - 启动时先对齐 `sql/schema.sql` 基线，再按文件名执行 `sql/migrations/*.sql`；版本写入 `schema_migrations`
+- 升级旧数据库时会自动增加并回填迁移校验和；建立基线后，历史迁移内容
+  变更或数据库中已应用的迁移文件缺失都会导致启动失败
 - 启动时强制启用 WAL、`synchronous=NORMAL`、5 秒 busy timeout 与外键检查；
   `/api/ready` 会验证这些运行参数，缺失时返回 503
 - RBAC 关联表使用外键约束，用户删除会级联清理角色映射，角色删除前必须先

@@ -1,6 +1,7 @@
 #include "Bootstrap.h"
 #include "Logger.h"
 #include "Metrics.h"
+#include "common/CryptoUtil.h"
 #include "filters/CorsFilter.h"
 #include <drogon/drogon.h>
 #include <drogon/orm/DbClient.h>
@@ -16,6 +17,7 @@
 #include <fstream>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -131,6 +133,31 @@ std::vector<std::string> loadSqlStatements(
     return stmts;
 }
 
+std::string fileSha256(const std::filesystem::path& path) {
+    std::ifstream input(path, std::ios::binary);
+    if (!input)
+        throw std::runtime_error(
+            "SQL file not found: " + path.string());
+    std::ostringstream contents;
+    contents << input.rdbuf();
+    if (input.bad())
+        throw std::runtime_error(
+            "SQL file read failed: " + path.string());
+    const auto raw = contents.str();
+    std::string normalized;
+    normalized.reserve(raw.size());
+    for (size_t index = 0; index < raw.size(); ++index) {
+        if (raw[index] == '\r') {
+            if (index + 1 < raw.size() && raw[index + 1] == '\n')
+                ++index;
+            normalized.push_back('\n');
+        } else {
+            normalized.push_back(raw[index]);
+        }
+    }
+    return common::CryptoUtil::sha256Hex(normalized);
+}
+
 std::optional<std::pair<std::string, std::string>>
 alterAddColumnTarget(const std::string& statement) {
     std::istringstream stream(statement);
@@ -210,8 +237,13 @@ void applySchemaAndMigrations(const drogon::orm::DbClientPtr& db) {
     db->execSqlSync(
         "CREATE TABLE IF NOT EXISTS schema_migrations("
         "version TEXT PRIMARY KEY,"
+        "checksum TEXT NOT NULL,"
         "applied_at INTEGER NOT NULL"
         ")");
+    if (!columnExists(db, "schema_migrations", "checksum")) {
+        db->execSqlSync(
+            "ALTER TABLE schema_migrations ADD COLUMN checksum TEXT");
+    }
 
     const auto migrationsDir =
         std::filesystem::path("sql") / "migrations";
@@ -229,9 +261,51 @@ void applySchemaAndMigrations(const drogon::orm::DbClientPtr& db) {
     }
     std::sort(migrations.begin(), migrations.end());
 
+    std::set<std::string> availableVersions;
+    for (const auto& migration : migrations) {
+        const auto version = migration.stem().string();
+        if (!availableVersions.insert(version).second)
+            throw std::runtime_error(
+                "duplicate migration version: " + version);
+    }
+
+    size_t checksumBackfillCount = 0;
+    const auto appliedMigrations = db->execSqlSync(
+        "SELECT version,COALESCE(checksum,'') AS checksum "
+        "FROM schema_migrations ORDER BY version");
+    for (const auto& applied : appliedMigrations) {
+        const auto version = applied["version"].as<std::string>();
+        if (!availableVersions.contains(version))
+            throw std::runtime_error(
+                "applied migration file is missing: " + version);
+
+        const auto migration = std::find_if(
+            migrations.begin(), migrations.end(),
+            [&version](const auto& path) {
+                return path.stem().string() == version;
+            });
+        const auto expectedChecksum = fileSha256(*migration);
+        const auto storedChecksum =
+            applied["checksum"].as<std::string>();
+        if (storedChecksum.empty()) {
+            db->execSqlSync(
+                "UPDATE schema_migrations SET checksum=? "
+                "WHERE version=? AND (checksum IS NULL OR checksum='')",
+                expectedChecksum,
+                version);
+            ++checksumBackfillCount;
+            APP_LOG_INFO
+                << "database migration checksum backfilled: " << version;
+        } else if (storedChecksum != expectedChecksum) {
+            throw std::runtime_error(
+                "migration checksum mismatch: " + version);
+        }
+    }
+
     size_t appliedCount = 0;
     for (const auto& migration : migrations) {
         const auto version = migration.stem().string();
+        const auto checksum = fileSha256(migration);
         auto applied = db->execSqlSync(
             "SELECT 1 FROM schema_migrations WHERE version=?",
             version);
@@ -255,9 +329,10 @@ void applySchemaAndMigrations(const drogon::orm::DbClientPtr& db) {
                 db->execSqlSync(statement);
             }
             db->execSqlSync(
-                "INSERT INTO schema_migrations(version,applied_at) "
-                "VALUES(?,CAST(strftime('%s','now') AS INTEGER))",
-                version);
+                "INSERT INTO schema_migrations(version,checksum,applied_at) "
+                "VALUES(?,?,CAST(strftime('%s','now') AS INTEGER))",
+                version,
+                checksum);
             db->execSqlSync("COMMIT");
             ++appliedCount;
             APP_LOG_INFO << "database migration applied: " << version;
@@ -273,6 +348,8 @@ void applySchemaAndMigrations(const drogon::orm::DbClientPtr& db) {
     APP_LOG_INFO << "database schema ready, baseStatements="
                  << schemaStatements.size()
                  << ", migrationsApplied=" << appliedCount
+                 << ", migrationChecksumsBackfilled="
+                 << checksumBackfillCount
                  << ", migrationsAvailable=" << migrations.size();
 }
 
