@@ -125,7 +125,8 @@ DROGON_CORS_MAX_AGE_SECONDS=600
 
 生产环境禁止 `*`；预检只接受 `GET/POST/PUT/DELETE/PATCH` 和
 `Authorization/Content-Type/X-Request-ID`。所有 API 响应（包括鉴权失败和
-404）统一附加 CORS 与安全响应头，认证响应使用 `Cache-Control: no-store`。
+404）统一附加 CORS、CSP、Permissions Policy 等安全响应头，并使用
+`Cache-Control: no-store`，避免账号、权限或会话数据被浏览器和代理落盘缓存。
 
 推荐由 Nginx/Caddy/云负载均衡终止 TLS，并让 Drogon 仅对内网监听。确认所有公网流量均为 HTTPS 后再设置 `DROGON_ENABLE_HSTS=true`；否则不要提前启用 HSTS。
 

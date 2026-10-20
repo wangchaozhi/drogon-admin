@@ -115,10 +115,13 @@ void CorsFilter::applyResponseHeaders(
     resp->addHeader("X-Frame-Options", "DENY");
     resp->addHeader("Referrer-Policy", "no-referrer");
     resp->addHeader(
+        "Permissions-Policy",
+        "camera=(), geolocation=(), microphone=(), payment=(), usb=()");
+    resp->addHeader(
         "Content-Security-Policy",
         "default-src 'none'; frame-ancestors 'none'");
-    if (req->getPath().rfind("/api/auth/", 0) == 0)
-        resp->addHeader("Cache-Control", "no-store");
+    // 管理 API 响应包含账号、权限和会话状态，不允许浏览器或代理落盘缓存。
+    resp->addHeader("Cache-Control", "no-store");
 
     const auto& origin = req->getHeader("Origin");
     if (origin.empty() || !cfg->isCorsOriginAllowed(origin)) return;

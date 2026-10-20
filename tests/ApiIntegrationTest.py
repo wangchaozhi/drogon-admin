@@ -289,6 +289,8 @@ def run_checks(base_url: str) -> None:
     assert health[2].get("Access-Control-Allow-Origin") == ALLOWED_ORIGIN
     assert health[2].get("X-Content-Type-Options") == "nosniff"
     assert health[2].get("X-Request-ID") == "integration-request-123"
+    assert health[2].get("Cache-Control") == "no-store"
+    assert "camera=()" in health[2].get("Permissions-Policy", "")
 
     ready = expect_ok(
         request(base_url, "GET", "/api/ready"),
@@ -317,6 +319,7 @@ def run_checks(base_url: str) -> None:
         "API 404 security headers",
     )
     assert not_found[2].get("X-Frame-Options") == "DENY"
+    assert not_found[2].get("Cache-Control") == "no-store"
 
     invalid_login = expect_status(
         request(base_url, "POST", "/api/auth/login", {}),
