@@ -9,6 +9,7 @@ backups
 cmake-build-*
 data
 logs
+secrets
 uploads
 front
 out

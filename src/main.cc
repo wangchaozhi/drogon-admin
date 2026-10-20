@@ -5,6 +5,10 @@
 #include "core/Bootstrap.h"
 #include <drogon/drogon.h>
 
+#include <cstdio>
+#include <cstdlib>
+#include <exception>
+
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -16,8 +20,33 @@ int main() {
     SetConsoleCP(65001);
 #endif
 
-    core::Bootstrap::init("config/config.json");
-    drogon::app().run();
-    core::Bootstrap::shutdown();
-    return 0;
+    bool bootstrapInitialized = false;
+    try {
+        core::Bootstrap::init("config/config.json");
+        bootstrapInitialized = true;
+        drogon::app().run();
+        core::Bootstrap::shutdown();
+        return EXIT_SUCCESS;
+    } catch (const std::exception& error) {
+        std::fprintf(stderr, "startup failed: %s\n", error.what());
+        std::fflush(stderr);
+        if (bootstrapInitialized) {
+            try {
+                core::Bootstrap::shutdown();
+            } catch (...) {
+                // The original startup error remains the actionable failure.
+            }
+        }
+        return EXIT_FAILURE;
+    } catch (...) {
+        std::fprintf(stderr, "startup failed: unknown error\n");
+        std::fflush(stderr);
+        if (bootstrapInitialized) {
+            try {
+                core::Bootstrap::shutdown();
+            } catch (...) {
+            }
+        }
+        return EXIT_FAILURE;
+    }
 }

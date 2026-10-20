@@ -9,6 +9,8 @@
 #include <array>
 #include <cctype>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <sstream>
 #include <stdexcept>
 
@@ -19,6 +21,47 @@ namespace {
 std::string envOrEmpty(const char* name) {
     const char* value = std::getenv(name);
     return value ? std::string(value) : std::string();
+}
+
+std::string readSecretFile(const std::string& path) {
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(path, error)) {
+        throw std::runtime_error(
+            "DROGON_JWT_SECRET_FILE must reference a readable regular file");
+    }
+
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        throw std::runtime_error(
+            "DROGON_JWT_SECRET_FILE must reference a readable regular file");
+    }
+
+    constexpr size_t maxSecretBytes = 4096;
+    std::array<char, maxSecretBytes + 1> buffer{};
+    input.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+    const auto bytes = static_cast<size_t>(input.gcount());
+    if (input.bad())
+        throw std::runtime_error("failed to read DROGON_JWT_SECRET_FILE");
+    if (bytes > maxSecretBytes)
+        throw std::runtime_error(
+            "DROGON_JWT_SECRET_FILE must not exceed 4096 bytes");
+
+    std::string secret(buffer.data(), bytes);
+    if (!secret.empty() && secret.back() == '\n') {
+        secret.pop_back();
+        if (!secret.empty() && secret.back() == '\r') secret.pop_back();
+    }
+    if (secret.empty())
+        throw std::runtime_error("DROGON_JWT_SECRET_FILE must not be empty");
+    if (std::any_of(
+            secret.begin(), secret.end(),
+            [](unsigned char c) {
+                return c < 0x20 || c == 0x7f;
+            })) {
+        throw std::runtime_error(
+            "DROGON_JWT_SECRET_FILE must contain exactly one text line");
+    }
+    return secret;
 }
 
 int intEnvOrDefault(const char* name, int fallback) {
@@ -109,9 +152,34 @@ void ConfigPlugin::initAndStart(const Json::Value& /*pluginCfg*/) {
         environment_ = custom["environment"].asString();
     if (environment_.empty()) environment_ = "development";
 
-    jwtSecret_ = envOrEmpty("DROGON_JWT_SECRET");
-    if (jwtSecret_.empty() && custom.isMember("jwt_secret"))
+    const auto jwtSecretEnv = envOrEmpty("DROGON_JWT_SECRET");
+    const auto jwtSecretFile = envOrEmpty("DROGON_JWT_SECRET_FILE");
+    if (!jwtSecretEnv.empty() && !jwtSecretFile.empty()) {
+        throw std::runtime_error(
+            "set only one of DROGON_JWT_SECRET and "
+            "DROGON_JWT_SECRET_FILE");
+    }
+    std::string jwtSecretSource = "generated";
+    if (!jwtSecretFile.empty()) {
+        jwtSecret_ = readSecretFile(jwtSecretFile);
+        jwtSecretSource = "file";
+    } else if (!jwtSecretEnv.empty()) {
+        jwtSecret_ = jwtSecretEnv;
+        jwtSecretSource = "environment";
+    } else if (custom.isMember("jwt_secret")) {
         jwtSecret_ = custom["jwt_secret"].asString();
+        jwtSecretSource = "config";
+    }
+    if (jwtSecret_.size() > 4096)
+        throw std::runtime_error("JWT secret must not exceed 4096 bytes");
+    if (std::any_of(
+            jwtSecret_.begin(), jwtSecret_.end(),
+            [](unsigned char c) {
+                return c < 0x20 || c == 0x7f;
+            })) {
+        throw std::runtime_error(
+            "JWT secret must not contain control characters");
+    }
 
     if (custom.isMember("jwt_expire_seconds"))
         jwtExpireSec_ = custom["jwt_expire_seconds"].asInt();
@@ -236,6 +304,7 @@ void ConfigPlugin::initAndStart(const Json::Value& /*pluginCfg*/) {
             throw std::runtime_error(
                 "DROGON_JWT_SECRET must contain at least 32 characters in production");
         jwtSecret_ = randomSecret();
+        jwtSecretSource = "generated";
         APP_LOG_WARN
             << "using an ephemeral JWT secret in development; existing tokens "
                "will be invalid after restart";
@@ -249,6 +318,7 @@ void ConfigPlugin::initAndStart(const Json::Value& /*pluginCfg*/) {
         loginRateLimitWindowSeconds_,
         10000);
     APP_LOG_INFO << "ConfigPlugin loaded, environment=" << environment_
+                 << ", jwtSecretSource=" << jwtSecretSource
                  << ", jwtExpireSec=" << jwtExpireSec_
                  << ", registrationMode=" << registrationMode_
                  << ", loginMaxFailures=" << loginMaxFailures_

@@ -23,6 +23,7 @@ from typing import Any
 
 ALLOWED_ORIGIN = "https://admin.example.test"
 QUERY_SECRET = "diagnostic-query-secret-2026"
+JWT_SECRET = "api-integration-test-secret-with-at-least-32-characters"
 
 
 def free_port() -> int:
@@ -1374,19 +1375,21 @@ def main() -> int:
         write_config(root, port)
         shutil.copytree(sql_dir, root / "sql")
         prepare_legacy_database(root)
+        secret_path = root / "secrets" / "jwt-secret"
+        secret_path.parent.mkdir()
+        secret_path.write_text(JWT_SECRET + "\n", encoding="utf-8")
 
         env = os.environ.copy()
         env.update(
             {
                 "DROGON_ENV": "production",
-                "DROGON_JWT_SECRET": (
-                    "api-integration-test-secret-with-at-least-32-characters"
-                ),
+                "DROGON_JWT_SECRET_FILE": str(secret_path),
                 "DROGON_REGISTRATION_MODE": "first-user",
                 "DROGON_CORS_ALLOWED_ORIGINS": ALLOWED_ORIGIN,
                 "DROGON_ENABLE_HSTS": "true",
             }
         )
+        env.pop("DROGON_JWT_SECRET", None)
         log_path = root / "server.log"
         diagnostic_secrets: set[str] = set()
         dynamic_user_id = 0
@@ -1410,6 +1413,7 @@ def main() -> int:
             finally:
                 stop_process(process)
 
+        diagnostic_secrets.add(JWT_SECRET)
         verify_request_diagnostics(
             log_path,
             diagnostic_secrets,
@@ -1423,6 +1427,52 @@ def main() -> int:
             assert "graceful shutdown started signal=SIGTERM" in shutdown_log
             assert "graceful shutdown drained all requests" in shutdown_log
             assert "drogon-admin stopped" in shutdown_log
+
+        conflicting_env = env.copy()
+        conflicting_env["DROGON_JWT_SECRET"] = JWT_SECRET
+        conflict_log_path = root / "secret-source-conflict.log"
+        with conflict_log_path.open("w", encoding="utf-8") as conflict_log:
+            process = subprocess.Popen(
+                [str(server)],
+                cwd=root,
+                env=conflicting_env,
+                stdout=conflict_log,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+            try:
+                wait_for_startup_failure(
+                    process,
+                    conflict_log_path,
+                    "set only one of DROGON_JWT_SECRET and "
+                    "DROGON_JWT_SECRET_FILE",
+                )
+            finally:
+                stop_process(process)
+
+        secret_path.write_text(
+            JWT_SECRET + "\nunexpected-second-line\n",
+            encoding="utf-8",
+        )
+        multiline_log_path = root / "multiline-secret.log"
+        with multiline_log_path.open("w", encoding="utf-8") as multiline_log:
+            process = subprocess.Popen(
+                [str(server)],
+                cwd=root,
+                env=env,
+                stdout=multiline_log,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+            try:
+                wait_for_startup_failure(
+                    process,
+                    multiline_log_path,
+                    "DROGON_JWT_SECRET_FILE must contain exactly one text line",
+                )
+            finally:
+                stop_process(process)
+        secret_path.write_text(JWT_SECRET + "\n", encoding="utf-8")
 
         # Existing installations have schema_migrations without a checksum
         # column. The upgrade must add it and establish a checksum baseline.

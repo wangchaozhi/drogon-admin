@@ -9,7 +9,7 @@ services:
     restart: unless-stopped
     environment:
       DROGON_ENV: production
-      DROGON_JWT_SECRET: ${DROGON_JWT_SECRET:?Set DROGON_JWT_SECRET to at least 32 random characters}
+      DROGON_JWT_SECRET_FILE: /run/secrets/drogon_jwt_secret
       DROGON_REGISTRATION_MODE: ${DROGON_REGISTRATION_MODE:-first-user}
       DROGON_LOGIN_RATE_LIMIT_GLOBAL: ${DROGON_LOGIN_RATE_LIMIT_GLOBAL:-120}
       DROGON_LOGIN_RATE_LIMIT_PER_IDENTIFIER: ${DROGON_LOGIN_RATE_LIMIT_PER_IDENTIFIER:-10}
@@ -24,6 +24,8 @@ services:
       - drogon-data:/app/data
       - drogon-logs:/app/logs
       - drogon-uploads:/app/uploads
+    secrets:
+      - drogon_jwt_secret
     read_only: true
     tmpfs:
       - /tmp:size=16m,noexec,nosuid
@@ -77,3 +79,7 @@ volumes:
   drogon-data:
   drogon-logs:
   drogon-uploads:
+
+secrets:
+  drogon_jwt_secret:
+    file: ${DROGON_JWT_SECRET_PATH:-./secrets/jwt_secret}

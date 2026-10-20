@@ -100,6 +100,19 @@ set DROGON_JWT_SECRET=<至少32字符的随机密钥>
 drogon-admin.exe
 ```
 
+生产部署推荐把密钥写入独立文件，并只设置文件路径，避免密钥出现在容器配置、
+进程环境或诊断输出中：
+
+```bash
+export DROGON_ENV=production
+export DROGON_JWT_SECRET_FILE=/run/secrets/drogon_jwt_secret
+./drogon-admin
+```
+
+`DROGON_JWT_SECRET` 与 `DROGON_JWT_SECRET_FILE` 互斥，同时设置会拒绝启动。
+密钥文件必须是可读普通文件，最多 4096 字节且仅含一行；生成工具附带的单个
+行尾换行会被安全移除。应用日志只记录密钥来源，不记录路径或内容。
+
 `DROGON_REGISTRATION_MODE` 支持 `first-user`（默认，仅允许首个管理员注册）、`open`（开放注册，后续用户为普通角色）和 `disabled`（关闭公开注册）。密码使用 Argon2id 随机盐哈希；旧 SHA-256 哈希会在登录成功后自动升级。
 
 登录连续失败默认 5 次后锁定账号 15 分钟，可通过
@@ -158,11 +171,18 @@ DROGON_CORS_MAX_AGE_SECONDS=600
 
 ```bash
 cp .env.example .env
-# 编辑 .env，至少设置 32 字符以上的随机 DROGON_JWT_SECRET
+mkdir -p secrets
+openssl rand -hex 32 > secrets/jwt_secret
 docker compose up -d --build
 docker compose ps
 curl http://127.0.0.1:8080/api/ready
 ```
+
+Compose 会把 `./secrets/jwt_secret` 只挂载到容器的
+`/run/secrets/drogon_jwt_secret`，不会把密钥值写入环境变量。若密钥文件位于
+其他位置，在 `.env` 中设置 `DROGON_JWT_SECRET_PATH`；`secrets/` 已被 Git 和
+镜像构建上下文忽略。密钥文件丢失、为空、包含多行或过长时，应用会在监听端口
+前失败关闭。
 
 Compose 默认仅绑定 `127.0.0.1`，应由同机反向代理提供公网 HTTPS。SQLite、
 日志和上传目录分别保存在命名卷中；升级前应备份数据卷。容器健康检查调用

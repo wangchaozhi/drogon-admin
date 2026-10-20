@@ -14,6 +14,7 @@ vcpkg_installed/
 
 # Runtime
 /.env
+/secrets/
 /data/
 /backups/
 logs/
