@@ -161,6 +161,38 @@ Compose 默认仅绑定 `127.0.0.1`，应由同机反向代理提供公网 HTTPS
 日志和上传目录分别保存在命名卷中；升级前应备份数据卷。容器健康检查调用
 `/api/ready`，而 `/api/health` 仅用于进程存活检查。
 
+### SQLite 在线备份与恢复演练
+
+不要直接复制运行中的 `drogon-admin.db`：WAL 中可能仍有未 checkpoint 的已提交
+事务，裸拷贝主文件会得到过期或不可恢复的快照。仓库提供的备份工具使用 SQLite
+Online Backup API，可在服务继续读写时生成事务一致的快照，并在原子发布前执行
+`integrity_check` 和 `foreign_key_check`：
+
+```bash
+# 容器部署：默认保留最近 14 份成功备份到 ./backups
+docker compose --profile ops run --rm backup
+
+# 非容器部署
+python scripts/sqlite_backup.py backup \
+  --source data/drogon-admin.db --output-dir backups --retain 14
+
+# 定期恢复演练前，重新校验文件大小、SHA-256、数据库结构和外键
+python scripts/sqlite_backup.py verify \
+  --database backups/drogon-admin-<UTC时间>.db
+```
+
+每份 `.db` 都有对应的 `.manifest.json`，记录 SHA-256、大小、SQLite 版本和迁移
+基线；校验失败的临时快照不会发布，也不会参与保留策略。Linux 上若希望容器输出
+归当前运维用户所有，可在运行前设置 `DROGON_BACKUP_UID=$(id -u)` 和
+`DROGON_BACKUP_GID=$(id -g)`。定时任务只需周期执行同一个 Compose 命令，并将
+`backups/` 再同步到异机或对象存储；同机备份不能代替异地容灾。
+
+恢复时必须先运行 `verify`，再停止后端，保留当前数据目录，删除旧数据库对应的
+`-wal`/`-shm` 文件，将已验证快照以临时文件写入同一数据目录并原子改名为
+`drogon-admin.db`，同时保持容器运行用户 `10001:10001` 的所有权。启动后确认
+`/api/ready` 为 200 并完成一次登录冒烟测试。建议每次发版前执行备份、每季度在
+隔离环境完成一次恢复演练；切勿在后端运行期间替换数据库文件。
+
 ## 前端开发与构建
 
 ```bat
@@ -215,7 +247,7 @@ npm run preview      REM 预览生产构建
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-CTest 会启动临时 Drogon 实例和独立 SQLite 数据库，黑盒验证注册/登录、密码与角色变更后的 token 吊销、登录锁定及管理员解锁、最后管理员保护、内置角色保护、审计权限/记录/敏感数据隔离以及 CORS/安全响应头。测试不会读写开发数据库。
+CTest 会启动临时 Drogon 实例和独立 SQLite 数据库，黑盒验证注册/登录、密码与角色变更后的 token 吊销、登录锁定及管理员解锁、最后管理员保护、内置角色保护、审计权限/记录/敏感数据隔离以及 CORS/安全响应头。独立的备份回归还会覆盖 WAL 快照、完整性校验、篡改拒绝和保留策略；测试不会读写开发数据库。
 
 手工调用示例：
 

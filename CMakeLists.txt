@@ -88,6 +88,11 @@ if(BUILD_TESTING)
         COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_SOURCE_DIR}/scripts/verify_release_workflows.py"
     )
+    add_test(
+        NAME sqlite-backup-test
+        COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_SOURCE_DIR}/tests/SqliteBackupTest.py"
+    )
 
     add_test(
         NAME api-integration-test

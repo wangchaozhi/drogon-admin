@@ -15,6 +15,9 @@ vcpkg_installed/
 # Runtime
 /.env
 /data/
+/backups/
 logs/
 uploads/
 *.log
+__pycache__/
+*.py[cod]

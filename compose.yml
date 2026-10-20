@@ -30,6 +30,45 @@ services:
     pids_limit: 256
     stop_grace_period: 15s
 
+  backup:
+    profiles: ["ops"]
+    image: ${DROGON_BACKUP_IMAGE:-python:3.13-alpine}
+    user: "${DROGON_BACKUP_UID:-0}:${DROGON_BACKUP_GID:-0}"
+    network_mode: none
+    read_only: true
+    working_dir: /ops
+    entrypoint: ["python3", "/ops/sqlite_backup.py"]
+    command:
+      - backup
+      - --source
+      - /app/data/drogon-admin.db
+      - --output-dir
+      - /backups
+      - --retain
+      - "${DROGON_BACKUP_RETAIN:-14}"
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - type: volume
+        source: drogon-data
+        target: /app/data
+        read_only: true
+      - type: bind
+        source: ${DROGON_BACKUP_DIR:-./backups}
+        target: /backups
+      - type: bind
+        source: ./scripts/sqlite_backup.py
+        target: /ops/sqlite_backup.py
+        read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 32
+    restart: "no"
+
 volumes:
   drogon-data:
   drogon-logs:

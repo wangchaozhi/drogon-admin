@@ -5,6 +5,7 @@
 .vs
 build
 build-*
+backups
 cmake-build-*
 data
 logs
