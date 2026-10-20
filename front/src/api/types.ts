@@ -3,6 +3,7 @@ export type User = {
   id: number
   name: string
   email: string
+  disabled: boolean
   created_at: number
 }
 

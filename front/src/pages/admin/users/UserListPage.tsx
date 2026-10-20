@@ -155,6 +155,16 @@ export default function UserListPage() {
     { title: '昵称', dataIndex: 'name' },
     { title: '邮箱', dataIndex: 'email' },
     {
+      title: '状态',
+      dataIndex: 'disabled',
+      width: 90,
+      render: (disabled: boolean) => (
+        <Tag color={disabled ? 'error' : 'success'}>
+          {disabled ? '已禁用' : '正常'}
+        </Tag>
+      ),
+    },
+    {
       title: '注册时间',
       dataIndex: 'created_at',
       render: (v: number) => new Date(v * 1000).toLocaleString(),

@@ -6,6 +6,10 @@ CREATE TABLE IF NOT EXISTS users (
     name          TEXT    NOT NULL,
     email         TEXT    NOT NULL UNIQUE,
     password_hash TEXT    NOT NULL DEFAULT '',
+    disabled      INTEGER NOT NULL DEFAULT 0,
+    token_version INTEGER NOT NULL DEFAULT 0,
+    failed_login_count INTEGER NOT NULL DEFAULT 0,
+    locked_until  INTEGER NOT NULL DEFAULT 0,
     created_at    INTEGER NOT NULL
 );
 
@@ -13,6 +17,10 @@ CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
 -- 迁移：老库存在但缺 password_hash 列时补齐（Bootstrap 用 try/catch 吞异常）
 ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN failed_login_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN locked_until INTEGER NOT NULL DEFAULT 0;
 
 -- ===================== RBAC =====================
 

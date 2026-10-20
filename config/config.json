@@ -48,6 +48,8 @@
     "custom_config": {
         "environment": "development",
         "jwt_expire_seconds": 7200,
-        "registration_mode": "first-user"
+        "registration_mode": "first-user",
+        "login_max_failures": 5,
+        "login_lock_seconds": 900
     }
 }

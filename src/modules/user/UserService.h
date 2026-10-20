@@ -9,6 +9,7 @@
 #include "dto/UpdateUserReq.h"
 #include "modules/rbac/dto/MenuDto.h"
 #include <drogon/utils/coroutine.h>
+#include <utility>
 
 namespace modules::user {
 
@@ -26,6 +27,17 @@ struct LoginResult {
 class LoginInvalidError : public std::runtime_error {
 public:
     using std::runtime_error::runtime_error;
+};
+
+class LoginThrottledError : public std::runtime_error {
+public:
+    LoginThrottledError(std::string message, int retryAfter)
+        : std::runtime_error(std::move(message)), retryAfter_(retryAfter) {}
+
+    int retryAfter() const { return retryAfter_; }
+
+private:
+    int retryAfter_;
 };
 
 class RegistrationClosedError : public std::runtime_error {

@@ -96,6 +96,11 @@ drogon-admin.exe
 
 `DROGON_REGISTRATION_MODE` 支持 `first-user`（默认，仅允许首个管理员注册）、`open`（开放注册，后续用户为普通角色）和 `disabled`（关闭公开注册）。密码使用 Argon2id 随机盐哈希；旧 SHA-256 哈希会在登录成功后自动升级。
 
+登录连续失败默认 5 次后锁定账号 15 分钟，可通过
+`DROGON_LOGIN_MAX_FAILURES`（3–20）和
+`DROGON_LOGIN_LOCK_SECONDS`（30–86400）调整。JWT 携带会话版本；
+修改密码后旧 token 立即失效，受保护请求也会实时拒绝已禁用或已删除账号。
+
 ## 前端开发与构建
 
 ```bat

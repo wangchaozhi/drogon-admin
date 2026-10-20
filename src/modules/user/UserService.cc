@@ -6,16 +6,29 @@
 #include "modules/rbac/RbacService.h"
 #include "core/Logger.h"
 #include <drogon/drogon.h>
+#include <algorithm>
 #include <string_view>
 
 namespace modules::user {
 
 namespace {
 
-std::pair<std::string, int> jwtConfig() {
+struct AuthConfig {
+    std::string secret;
+    int expireSeconds;
+    int maxFailures;
+    int lockSeconds;
+};
+
+AuthConfig authConfig() {
     auto* cfg = drogon::app().getPlugin<plugins::ConfigPlugin>();
     if (!cfg) throw std::runtime_error("ConfigPlugin unavailable");
-    return {cfg->jwtSecret(), cfg->jwtExpireSeconds()};
+    return {
+        cfg->jwtSecret(),
+        cfg->jwtExpireSeconds(),
+        cfg->loginMaxFailures(),
+        cfg->loginLockSeconds(),
+    };
 }
 
 std::string registrationMode() {
@@ -70,21 +83,46 @@ UserService::update(int64_t id, dto::UpdateUserReq req) {
 
 drogon::Task<LoginResult>
 UserService::login(dto::LoginReq req) {
+    const auto cfg = authConfig();
+    const int64_t now = common::TimeUtil::nowSec();
     auto rec = co_await repo_.findByEmail(req.email);
+    if (rec && rec->lockedUntil > now) {
+        throw LoginThrottledError(
+            "too many login attempts; try again later",
+            static_cast<int>(std::max<int64_t>(1, rec->lockedUntil - now)));
+    }
     if (!rec || !common::CryptoUtil::verifyPassword(req.password, rec->passwordHash)) {
+        if (rec) {
+            const auto state = co_await repo_.recordLoginFailure(
+                rec->user.id, cfg.maxFailures, cfg.lockSeconds);
+            if (state.lockedUntil > now) {
+                throw LoginThrottledError(
+                    "too many login attempts; try again later",
+                    static_cast<int>(
+                        std::max<int64_t>(1, state.lockedUntil - now)));
+            }
+        }
         throw LoginInvalidError("email or password incorrect");
     }
+    if (rec->user.disabled)
+        throw LoginInvalidError("email or password incorrect");
+
+    co_await repo_.resetLoginFailures(rec->user.id);
     if (common::CryptoUtil::passwordNeedsRehash(rec->passwordHash)) {
         co_await repo_.updatePasswordHash(
             rec->user.id, common::CryptoUtil::hashPassword(req.password));
         APP_LOG_INFO << "password hash upgraded uid=" << rec->user.id;
     }
 
-    auto [secret, expireSec] = jwtConfig();
     LoginResult r;
     r.user      = rec->user;
-    r.token     = common::JwtUtil::sign(rec->user.id, rec->user.email, secret, expireSec);
-    r.expiresAt = common::TimeUtil::nowSec() + expireSec;
+    r.token     = common::JwtUtil::sign(
+        rec->user.id,
+        rec->user.email,
+        rec->tokenVersion,
+        cfg.secret,
+        cfg.expireSeconds);
+    r.expiresAt = common::TimeUtil::nowSec() + cfg.expireSeconds;
 
     try {
         auto view = co_await rbac::RbacService::instance().getUserView(rec->user.id);

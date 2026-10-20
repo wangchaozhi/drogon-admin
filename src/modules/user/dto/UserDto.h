@@ -12,6 +12,7 @@ struct UserDto {
     int64_t     id{0};
     std::string name;
     std::string email;
+    bool        disabled{false};
     int64_t     createdAt{0};
 
     Json::Value toJson() const {
@@ -19,6 +20,7 @@ struct UserDto {
         j["id"]         = static_cast<Json::Int64>(id);
         j["name"]       = name;
         j["email"]      = email;
+        j["disabled"]   = disabled;
         j["created_at"] = static_cast<Json::Int64>(createdAt);
         return j;
     }

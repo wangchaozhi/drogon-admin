@@ -1,7 +1,7 @@
 #pragma once
 //
 // 轻量 JWT（HS256）实现：sign / verify。
-// Payload 包含 sub(userId)、email、iat、exp。
+// Payload 包含 sub(userId)、email、ver(token version)、iat、exp。
 // 只依赖 OpenSSL + JsonCpp，避免引入额外 jwt-cpp 依赖。
 //
 #include "CryptoUtil.h"
@@ -20,6 +20,7 @@ namespace common {
 struct JwtPayload {
     int64_t     userId{0};
     std::string email;
+    int64_t     tokenVersion{-1};
     int64_t     iat{0};
     int64_t     exp{0};
 };
@@ -29,6 +30,7 @@ public:
     // 生成 token；secret 建议 >= 32 字节，expireSec 为有效期（秒）
     static std::string sign(int64_t userId,
                             const std::string& email,
+                            int64_t tokenVersion,
                             const std::string& secret,
                             int expireSec) {
         int64_t now = common::TimeUtil::nowSec();
@@ -40,6 +42,7 @@ public:
         Json::Value payload;
         payload["sub"]   = static_cast<Json::Int64>(userId);
         payload["email"] = email;
+        payload["ver"]   = static_cast<Json::Int64>(tokenVersion);
         payload["iat"]   = static_cast<Json::Int64>(now);
         payload["exp"]   = static_cast<Json::Int64>(now + expireSec);
 
@@ -65,6 +68,10 @@ public:
         if (dot1 == std::string_view::npos) { err = "malformed token"; return std::nullopt; }
         auto dot2 = token.find('.', dot1 + 1);
         if (dot2 == std::string_view::npos) { err = "malformed token"; return std::nullopt; }
+        if (token.find('.', dot2 + 1) != std::string_view::npos) {
+            err = "malformed token";
+            return std::nullopt;
+        }
 
         std::string_view headerB64  = token.substr(0, dot1);
         std::string_view payloadB64 = token.substr(dot1 + 1, dot2 - dot1 - 1);
@@ -85,6 +92,25 @@ public:
             return std::nullopt;
         }
 
+        // 解码并验证 header，拒绝算法混淆或缺失的 alg。
+        std::string headerJson;
+        if (!CryptoUtil::base64UrlDecode(headerB64, headerJson)) {
+            err = "bad header b64";
+            return std::nullopt;
+        }
+        Json::Value header;
+        Json::CharReaderBuilder rb;
+        std::string parseErr;
+        auto headerReader = std::unique_ptr<Json::CharReader>(rb.newCharReader());
+        if (!headerReader->parse(headerJson.data(),
+                                 headerJson.data() + headerJson.size(),
+                                 &header, &parseErr)
+            || header.get("alg", "").asString() != "HS256"
+            || header.get("typ", "").asString() != "JWT") {
+            err = "unsupported token header";
+            return std::nullopt;
+        }
+
         // 解码 payload
         std::string payloadJson;
         if (!CryptoUtil::base64UrlDecode(payloadB64, payloadJson)) {
@@ -92,8 +118,7 @@ public:
             return std::nullopt;
         }
         Json::Value j;
-        Json::CharReaderBuilder rb;
-        std::string parseErr;
+        parseErr.clear();
         auto reader = std::unique_ptr<Json::CharReader>(rb.newCharReader());
         if (!reader->parse(payloadJson.data(),
                            payloadJson.data() + payloadJson.size(),
@@ -105,10 +130,16 @@ public:
         JwtPayload p;
         p.userId = j.get("sub", 0).asInt64();
         p.email  = j.get("email", "").asString();
+        p.tokenVersion = j.get("ver", -1).asInt64();
         p.iat    = j.get("iat", 0).asInt64();
         p.exp    = j.get("exp", 0).asInt64();
 
-        if (p.exp > 0 && common::TimeUtil::nowSec() >= p.exp) {
+        if (p.userId <= 0 || p.email.empty() || p.tokenVersion < 0
+            || p.iat <= 0 || p.exp <= p.iat) {
+            err = "invalid token claims";
+            return std::nullopt;
+        }
+        if (common::TimeUtil::nowSec() >= p.exp) {
             err = "token expired";
             return std::nullopt;
         }

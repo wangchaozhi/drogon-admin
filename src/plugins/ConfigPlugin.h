@@ -20,12 +20,16 @@ public:
     int jwtExpireSeconds() const { return jwtExpireSec_; }
     const std::string& environment() const { return environment_; }
     const std::string& registrationMode() const { return registrationMode_; }
+    int loginMaxFailures() const { return loginMaxFailures_; }
+    int loginLockSeconds() const { return loginLockSeconds_; }
 
 private:
     std::string jwtSecret_;
     int jwtExpireSec_{7200};
     std::string environment_{"development"};
     std::string registrationMode_{"first-user"};
+    int loginMaxFailures_{5};
+    int loginLockSeconds_{900};
 };
 
 } // namespace plugins

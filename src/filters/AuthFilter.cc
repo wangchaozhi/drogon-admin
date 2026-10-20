@@ -4,6 +4,7 @@
 #include "common/JwtUtil.h"
 #include "plugins/ConfigPlugin.h"
 #include "modules/rbac/RbacService.h"
+#include "modules/user/UserRepository.h"
 #include <drogon/drogon.h>
 #include <drogon/utils/coroutine.h>
 
@@ -16,11 +17,23 @@ namespace {
 // HttpRequestPtr 为 shared_ptr），可安全复制到协程 frame。
 drogon::AsyncTask loadAndContinue(drogon::HttpRequestPtr req,
                                   int64_t userId,
+                                  std::string email,
+                                  int64_t tokenVersion,
                                   drogon::FilterCallback fcb,
                                   drogon::FilterChainCallback fccb) {
     try {
+        modules::user::UserRepository users;
+        const auto state = co_await users.findAuthState(userId);
+        if (!state || state->disabled
+            || state->tokenVersion != tokenVersion) {
+            fcb(core::Result::unauthorized("token has been revoked"));
+            co_return;
+        }
+
         auto view = co_await modules::rbac::RbacService::instance().getUserView(userId);
         auto attrs = req->attributes();
+        attrs->insert("userId",         userId);
+        attrs->insert("email",          std::move(email));
         attrs->insert("roles",          view.roles);
         attrs->insert("permissions",    view.perms);
         attrs->insert("permissionsStr", view.permsStr);
@@ -62,14 +75,13 @@ void AuthFilter::doFilter(const drogon::HttpRequestPtr& req,
         return;
     }
 
-    // 基础字段同步写入 attributes
-    auto attrs = req->attributes();
-    attrs->insert("userId", payload->userId);
-    attrs->insert("email",  payload->email);
-
-    // RBAC 视图可能冷加载 → 异步协程里 co_await，
-    // 不阻塞当前 event loop，完成后再调 fccb()。
-    loadAndContinue(req, payload->userId, std::move(fcb), std::move(fccb));
+    // 账号状态与 RBAC 视图都需要异步查询，验证后再写入 attributes 并放行。
+    loadAndContinue(req,
+                    payload->userId,
+                    std::move(payload->email),
+                    payload->tokenVersion,
+                    std::move(fcb),
+                    std::move(fccb));
 }
 
 } // namespace filters

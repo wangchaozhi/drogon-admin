@@ -168,6 +168,11 @@ drogon::AsyncTask UserController::login(
                      << " roles=" << r.roles.size()
                      << " perms=" << r.permissions.size();
         cb(core::Result::ok(std::move(data), "login ok"));
+    } catch (const LoginThrottledError& e) {
+        auto resp = core::Result::fail(
+            4291, e.what(), drogon::k429TooManyRequests);
+        resp->addHeader("Retry-After", std::to_string(e.retryAfter()));
+        cb(resp);
     } catch (const LoginInvalidError& e) {
         cb(core::Result::fail(4011, e.what(), drogon::k401Unauthorized));
     } catch (const std::exception& e) {

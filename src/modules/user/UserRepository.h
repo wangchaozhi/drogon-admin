@@ -16,6 +16,19 @@ namespace modules::user {
 struct UserRecord {
     dto::UserDto user;
     std::string  passwordHash;
+    int64_t      tokenVersion{0};
+    int          failedLoginCount{0};
+    int64_t      lockedUntil{0};
+};
+
+struct AuthState {
+    bool    disabled{false};
+    int64_t tokenVersion{0};
+};
+
+struct LoginAttemptState {
+    int     failedCount{0};
+    int64_t lockedUntil{0};
 };
 
 class UserRepository {
@@ -25,6 +38,7 @@ public:
     drogon::Task<std::optional<dto::UserDto>> findById(int64_t id);
 
     drogon::Task<std::optional<UserRecord>>   findByEmail(std::string email);
+    drogon::Task<std::optional<AuthState>>    findAuthState(int64_t id);
 
     drogon::Task<dto::UserDto>                insert(std::string name,
                                                      std::string email,
@@ -54,7 +68,13 @@ public:
 
     drogon::Task<bool> deleteById(int64_t id);
 
-    drogon::Task<> updatePasswordHash(int64_t id, std::string passwordHash);
+    drogon::Task<> updatePasswordHash(int64_t id,
+                                      std::string passwordHash,
+                                      bool revokeTokens = false);
+
+    drogon::Task<LoginAttemptState> recordLoginFailure(
+        int64_t id, int maxFailures, int lockSeconds);
+    drogon::Task<> resetLoginFailures(int64_t id);
 
     // 更新基础资料；passwordHash 为空时不改密码
     drogon::Task<std::optional<dto::UserDto>> updateById(int64_t id,

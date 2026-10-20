@@ -67,6 +67,7 @@ if(BUILD_TESTING)
     add_executable(crypto-util-test tests/CryptoUtilTest.cc)
     target_include_directories(crypto-util-test PRIVATE src)
     target_link_libraries(crypto-util-test PRIVATE
+        Drogon::Drogon
         OpenSSL::Crypto
         ${ARGON2_TARGET}
     )

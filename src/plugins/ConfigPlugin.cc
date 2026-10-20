@@ -16,6 +16,19 @@ std::string envOrEmpty(const char* name) {
     return value ? std::string(value) : std::string();
 }
 
+int intEnvOrDefault(const char* name, int fallback) {
+    const auto value = envOrEmpty(name);
+    if (value.empty()) return fallback;
+    try {
+        size_t parsed = 0;
+        const int result = std::stoi(value, &parsed);
+        if (parsed != value.size()) throw std::invalid_argument("trailing characters");
+        return result;
+    } catch (const std::exception&) {
+        throw std::runtime_error(std::string(name) + " must be an integer");
+    }
+}
+
 std::string randomSecret() {
     std::array<unsigned char, 32> bytes{};
     if (RAND_bytes(bytes.data(), static_cast<int>(bytes.size())) != 1)
@@ -56,6 +69,14 @@ void ConfigPlugin::initAndStart(const Json::Value& /*pluginCfg*/) {
     if (registrationMode_.empty() && custom.isMember("registration_mode"))
         registrationMode_ = custom["registration_mode"].asString();
     if (registrationMode_.empty()) registrationMode_ = "first-user";
+    if (custom.isMember("login_max_failures"))
+        loginMaxFailures_ = custom["login_max_failures"].asInt();
+    if (custom.isMember("login_lock_seconds"))
+        loginLockSeconds_ = custom["login_lock_seconds"].asInt();
+    loginMaxFailures_ = intEnvOrDefault(
+        "DROGON_LOGIN_MAX_FAILURES", loginMaxFailures_);
+    loginLockSeconds_ = intEnvOrDefault(
+        "DROGON_LOGIN_LOCK_SECONDS", loginLockSeconds_);
 
     if (jwtExpireSec_ < 300 || jwtExpireSec_ > 86400)
         throw std::runtime_error(
@@ -66,6 +87,12 @@ void ConfigPlugin::initAndStart(const Json::Value& /*pluginCfg*/) {
         throw std::runtime_error(
             "registration_mode must be disabled, first-user, or open");
     }
+    if (loginMaxFailures_ < 3 || loginMaxFailures_ > 20)
+        throw std::runtime_error(
+            "login_max_failures must be between 3 and 20");
+    if (loginLockSeconds_ < 30 || loginLockSeconds_ > 86400)
+        throw std::runtime_error(
+            "login_lock_seconds must be between 30 and 86400");
 
     if (insecureSecret(jwtSecret_)) {
         if (environment_ == "production")
@@ -79,7 +106,9 @@ void ConfigPlugin::initAndStart(const Json::Value& /*pluginCfg*/) {
 
     APP_LOG_INFO << "ConfigPlugin loaded, environment=" << environment_
                  << ", jwtExpireSec=" << jwtExpireSec_
-                 << ", registrationMode=" << registrationMode_;
+                 << ", registrationMode=" << registrationMode_
+                 << ", loginMaxFailures=" << loginMaxFailures_
+                 << ", loginLockSeconds=" << loginLockSeconds_;
 }
 
 void ConfigPlugin::shutdown() {
