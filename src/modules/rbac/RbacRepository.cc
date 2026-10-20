@@ -187,8 +187,17 @@ drogon::Task<std::optional<dto::MenuDto>> RbacRepository::getMenu(int64_t id) {
 }
 
 drogon::Task<dto::MenuDto> RbacRepository::createMenu(dto::MenuUpsertReq m) {
+    auto transaction = co_await db()->newTransactionCoro(
+        drogon::orm::TransactionType::Immediate);
+    if (m.parentId != 0) {
+        auto parent = co_await transaction->execSqlCoro(
+            "SELECT 1 FROM menus WHERE id=?", m.parentId);
+        if (parent.empty())
+            throw core::NotFoundError("parent menu not found");
+    }
+
     int64_t now = common::TimeUtil::nowSec();
-    auto res = co_await db()->execSqlCoro(
+    auto res = co_await transaction->execSqlCoro(
         "INSERT INTO menus(parent_id,name,path,icon,component,sort,type,visible,created_at) "
         "VALUES(?,?,?,?,?,?,?,?,?)",
         m.parentId, m.name, m.path, m.icon, m.component,
@@ -208,7 +217,33 @@ drogon::Task<dto::MenuDto> RbacRepository::createMenu(dto::MenuUpsertReq m) {
 }
 
 drogon::Task<bool> RbacRepository::updateMenu(int64_t id, dto::MenuUpsertReq m) {
-    auto res = co_await db()->execSqlCoro(
+    auto transaction = co_await db()->newTransactionCoro(
+        drogon::orm::TransactionType::Immediate);
+    auto target = co_await transaction->execSqlCoro(
+        "SELECT 1 FROM menus WHERE id=?", id);
+    if (target.empty()) co_return false;
+    if (m.parentId == id)
+        throw core::ValidationError("menu cannot be its own parent");
+    if (m.parentId != 0) {
+        auto parent = co_await transaction->execSqlCoro(
+            "SELECT 1 FROM menus WHERE id=?", m.parentId);
+        if (parent.empty())
+            throw core::NotFoundError("parent menu not found");
+
+        auto cycle = co_await transaction->execSqlCoro(
+            "WITH RECURSIVE descendants(id) AS ("
+            "SELECT id FROM menus WHERE parent_id=? "
+            "UNION ALL "
+            "SELECT m.id FROM menus m "
+            "JOIN descendants d ON m.parent_id=d.id"
+            ") SELECT 1 FROM descendants WHERE id=? LIMIT 1",
+            id, m.parentId);
+        if (!cycle.empty())
+            throw core::ValidationError(
+                "parent menu cannot be a descendant of this menu");
+    }
+
+    auto res = co_await transaction->execSqlCoro(
         "UPDATE menus SET parent_id=?, name=?, path=?, icon=?, component=?, "
         "sort=?, type=?, visible=? WHERE id=?",
         m.parentId, m.name, m.path, m.icon, m.component,
@@ -217,10 +252,22 @@ drogon::Task<bool> RbacRepository::updateMenu(int64_t id, dto::MenuUpsertReq m) 
 }
 
 drogon::Task<bool> RbacRepository::deleteMenu(int64_t id) {
-    auto c = db();
-    // 顺便删除挂在该菜单下的权限
-    co_await c->execSqlCoro("DELETE FROM permissions WHERE menu_id=?", id);
-    auto res = co_await c->execSqlCoro("DELETE FROM menus WHERE id=?", id);
+    auto transaction = co_await db()->newTransactionCoro(
+        drogon::orm::TransactionType::Immediate);
+    auto target = co_await transaction->execSqlCoro(
+        "SELECT 1 FROM menus WHERE id=?", id);
+    if (target.empty()) co_return false;
+    auto children = co_await transaction->execSqlCoro(
+        "SELECT 1 FROM menus WHERE parent_id=? LIMIT 1", id);
+    if (!children.empty())
+        throw core::ConflictError(
+            "menu with child items cannot be deleted");
+
+    // 删除菜单权限；role_permissions 通过外键级联清理。
+    co_await transaction->execSqlCoro(
+        "DELETE FROM permissions WHERE menu_id=?", id);
+    auto res = co_await transaction->execSqlCoro(
+        "DELETE FROM menus WHERE id=?", id);
     co_return res.affectedRows() > 0;
 }
 

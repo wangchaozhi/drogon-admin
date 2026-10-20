@@ -65,7 +65,13 @@ struct MenuUpsertReq {
         m.type      = j.get("type", "menu").asString();
         m.visible   = j.get("visible", 1).asInt();
         if (m.name.empty())  { err = "name is required"; return std::nullopt; }
+        if (m.name.size() > 100) { err = "name must be at most 100 chars"; return std::nullopt; }
+        if (m.parentId < 0) { err = "parent_id must not be negative"; return std::nullopt; }
         if (m.type != "dir" && m.type != "menu") { err = "type must be dir|menu"; return std::nullopt; }
+        if (m.path.size() > 255) { err = "path must be at most 255 chars"; return std::nullopt; }
+        if (m.icon.size() > 100) { err = "icon must be at most 100 chars"; return std::nullopt; }
+        if (m.component.size() > 100) { err = "component must be at most 100 chars"; return std::nullopt; }
+        if (m.visible != 0 && m.visible != 1) { err = "visible must be 0 or 1"; return std::nullopt; }
         return m;
     }
 };

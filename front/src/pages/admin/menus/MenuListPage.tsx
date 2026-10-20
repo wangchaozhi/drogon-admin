@@ -45,6 +45,21 @@ function flatten(tree: Menu[], depth = 0, out: FlatMenu[] = []): FlatMenu[] {
   return out
 }
 
+function findMenu(tree: Menu[], id: number): Menu | undefined {
+  for (const menu of tree) {
+    if (menu.id === id) return menu
+    const nested = findMenu(menu.children ?? [], id)
+    if (nested) return nested
+  }
+  return undefined
+}
+
+function collectSubtreeIds(menu: Menu, ids = new Set<number>()): Set<number> {
+  ids.add(menu.id)
+  for (const child of menu.children ?? []) collectSubtreeIds(child, ids)
+  return ids
+}
+
 const iconOptions = [
   'DashboardOutlined', 'SettingOutlined', 'TeamOutlined', 'UserOutlined',
   'MenuOutlined', 'SafetyOutlined', 'ProfileOutlined', 'AppstoreOutlined',
@@ -82,13 +97,21 @@ export default function MenuListPage() {
 
   const list = useMemo(() => flatten(tree), [tree])
 
-  const parentOptions = useMemo(
-    () => [
+  const parentOptions = useMemo(() => {
+    const editingMenu = editing ? findMenu(tree, editing.id) : undefined
+    const unavailable = editingMenu
+      ? collectSubtreeIds(editingMenu)
+      : new Set<number>()
+    return [
       { label: '— 顶级 —', value: 0 },
-      ...list.map((m) => ({ label: `${'　'.repeat(m.depth)}${m.name}`, value: m.id })),
-    ],
-    [list],
-  )
+      ...list
+        .filter((menu) => !unavailable.has(menu.id))
+        .map((menu) => ({
+          label: `${'　'.repeat(menu.depth)}${menu.name}`,
+          value: menu.id,
+        })),
+    ]
+  }, [editing, list, tree])
 
   const openCreate = (parent?: Menu) => {
     setEditing(null)

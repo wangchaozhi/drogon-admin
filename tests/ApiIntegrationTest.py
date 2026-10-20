@@ -405,6 +405,109 @@ def run_checks(base_url: str) -> None:
     expect_status(
         request(
             base_url,
+            "POST",
+            "/api/menus",
+            {
+                "parent_id": 999999,
+                "name": "Orphan",
+                "type": "menu",
+            },
+            token=admin_token,
+        ),
+        404,
+        "reject nonexistent menu parent",
+    )
+    parent_menu = expect_ok(
+        request(
+            base_url,
+            "POST",
+            "/api/menus",
+            {
+                "parent_id": 0,
+                "name": "Operations",
+                "type": "dir",
+            },
+            token=admin_token,
+        ),
+        "create parent menu",
+    )
+    parent_menu_id = int(parent_menu["id"])
+    child_menu = expect_ok(
+        request(
+            base_url,
+            "POST",
+            "/api/menus",
+            {
+                "parent_id": parent_menu_id,
+                "name": "Jobs",
+                "type": "menu",
+            },
+            token=admin_token,
+        ),
+        "create child menu",
+    )
+    child_menu_id = int(child_menu["id"])
+    expect_status(
+        request(
+            base_url,
+            "PUT",
+            f"/api/menus/{parent_menu_id}",
+            {
+                "parent_id": parent_menu_id,
+                "name": "Operations",
+                "type": "dir",
+            },
+            token=admin_token,
+        ),
+        400,
+        "reject self-parent menu",
+    )
+    expect_status(
+        request(
+            base_url,
+            "PUT",
+            f"/api/menus/{parent_menu_id}",
+            {
+                "parent_id": child_menu_id,
+                "name": "Operations",
+                "type": "dir",
+            },
+            token=admin_token,
+        ),
+        400,
+        "reject cyclic menu hierarchy",
+    )
+    expect_status(
+        request(
+            base_url,
+            "DELETE",
+            f"/api/menus/{parent_menu_id}",
+            token=admin_token,
+        ),
+        409,
+        "reject deleting menu with children",
+    )
+    expect_ok(
+        request(
+            base_url,
+            "DELETE",
+            f"/api/menus/{child_menu_id}",
+            token=admin_token,
+        ),
+        "delete child menu",
+    )
+    expect_ok(
+        request(
+            base_url,
+            "DELETE",
+            f"/api/menus/{parent_menu_id}",
+            token=admin_token,
+        ),
+        "delete empty parent menu",
+    )
+    expect_status(
+        request(
+            base_url,
             "GET",
             "/api/users?page=1x",
             token=admin_token,

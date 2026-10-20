@@ -1,6 +1,7 @@
 #include "MenuController.h"
 #include "RbacService.h"
 #include "dto/RbacReq.h"
+#include "core/DomainError.h"
 #include "core/ErrorHandler.h"
 #include "core/Result.h"
 #include "filters/PermissionRegistry.h"
@@ -54,6 +55,10 @@ drogon::AsyncTask MenuController::create(
         auto saved = co_await RbacService::instance().repo().createMenu(*m);
         RbacService::instance().invalidateAll();
         cb(core::Result::ok(saved.toJson(), "created"));
+    } catch (const core::NotFoundError& e) {
+        cb(core::Result::notFound(e.what()));
+    } catch (const core::ValidationError& e) {
+        cb(core::Result::fail(4002, e.what(), drogon::k400BadRequest));
     } catch (const std::exception& e) {
         cb(core::internalError(req, "create menu", e, 5003));
     }
@@ -77,6 +82,10 @@ drogon::AsyncTask MenuController::update(
         RbacService::instance().invalidateAll();
         auto saved = co_await RbacService::instance().repo().getMenu(id);
         cb(core::Result::ok(saved ? saved->toJson() : Json::nullValue, "updated"));
+    } catch (const core::NotFoundError& e) {
+        cb(core::Result::notFound(e.what()));
+    } catch (const core::ValidationError& e) {
+        cb(core::Result::fail(4002, e.what(), drogon::k400BadRequest));
     } catch (const std::exception& e) {
         cb(core::internalError(req, "update menu", e, 5003));
     }
@@ -94,6 +103,8 @@ drogon::AsyncTask MenuController::remove(
         }
         RbacService::instance().invalidateAll();
         cb(core::Result::ok(Json::nullValue, "deleted"));
+    } catch (const core::ConflictError& e) {
+        cb(core::Result::fail(4091, e.what(), drogon::k409Conflict));
     } catch (const std::exception& e) {
         cb(core::internalError(req, "delete menu", e, 5003));
     }

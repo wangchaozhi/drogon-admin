@@ -267,6 +267,8 @@ ADD_METHOD_TO(UserController::create, "/api/users",
 
 - **用户-角色-权限** 三元模型：`users` ↔ `user_roles` ↔ `roles` ↔ `role_permissions` ↔ `permissions`
 - **菜单即权限**：每个菜单对应一组权限（`menu` 类型为页面访问权，`button` 类型为操作权），由 `menu_id` 关联
+- **菜单树完整性**：创建和更新时验证父节点存在，禁止自引用及祖先挂到后代；
+  含子节点的菜单必须先清空子节点后才能删除
 - **PermissionFilter**：在 `PermissionRegistry` 中注册每个 Controller 方法的权限码，请求时校验 JWT 中的用户是否拥有对应权限
 - **前端权限**：`DynamicMenu` 根据后端返回的权限树动态渲染侧边栏；`HasPerm` 组件控制按钮级显隐；路由层 `ProtectedRoute` 控制页面级访问
 
