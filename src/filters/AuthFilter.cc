@@ -47,10 +47,15 @@ void AuthFilter::doFilter(const drogon::HttpRequestPtr& req,
     std::string token = auth.substr(7);
 
     auto* cfg = drogon::app().getPlugin<plugins::ConfigPlugin>();
-    std::string secret = cfg ? cfg->jwtSecret() : std::string("change-me");
+    if (!cfg) {
+        APP_LOG_ERROR << "auth rejected: ConfigPlugin unavailable";
+        fcb(core::Result::fail(5005, "authentication unavailable",
+                               drogon::k500InternalServerError));
+        return;
+    }
 
     std::string err;
-    auto payload = common::JwtUtil::verify(token, secret, err);
+    auto payload = common::JwtUtil::verify(token, cfg->jwtSecret(), err);
     if (!payload) {
         APP_LOG_WARN << "auth rejected: " << err << " path=" << req->getPath();
         fcb(core::Result::unauthorized("invalid token: " + err));

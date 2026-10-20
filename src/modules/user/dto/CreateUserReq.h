@@ -2,6 +2,7 @@
 //
 // 创建用户请求 DTO（同时用于注册）+ 简单校验。
 //
+#include "Validation.h"
 #include <json/json.h>
 #include <optional>
 #include <string>
@@ -24,10 +25,17 @@ struct CreateUserReq {
         req.name     = j.get("name", "").asString();
         req.email    = j.get("email", "").asString();
         req.password = j.get("password", "").asString();
-        if (req.name.empty())      { err = "name is required";     return std::nullopt; }
-        if (req.email.empty())     { err = "email is required";    return std::nullopt; }
-        if (req.password.size() < 6) {
-            err = "password must be at least 6 chars";
+        if (req.name.empty()) { err = "name is required"; return std::nullopt; }
+        if (req.name.size() > 100) {
+            err = "name must be at most 100 chars";
+            return std::nullopt;
+        }
+        if (!validation::validEmail(req.email)) {
+            err = "email format is invalid";
+            return std::nullopt;
+        }
+        if (!validation::validPassword(req.password)) {
+            err = "password must be between 12 and 256 chars";
             return std::nullopt;
         }
         return req;

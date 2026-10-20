@@ -2,25 +2,27 @@
 //
 // Crypto 工具：
 //   - base64Url(Encode/Decode)
-//   - sha256Hex（用于密码哈希，加了固定盐；生产建议换 bcrypt/argon2）
+//   - Argon2id 密码哈希（随机盐）与旧 SHA-256 哈希的渐进迁移
 //   - hmacSha256（JWT 签名用）
 //
+#include <argon2.h>
+#include <openssl/crypto.h>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
+#include <openssl/rand.h>
 #include <openssl/sha.h>
 
 #include <array>
 #include <cstdint>
+#include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace common {
 
 class CryptoUtil {
 public:
-    // 固定盐，避免简单彩虹表；生产应为每用户独立盐
-    static constexpr const char* kPasswordSalt = "drogon_admin_salt_v1";
-
     // -- base64 url-safe encode / decode ------------------------------------
     static std::string base64UrlEncode(const void* data, size_t len) {
         static const char kAlphabet[] =
@@ -90,22 +92,44 @@ public:
         return toHex(digest.data(), digest.size());
     }
 
-    // 密码哈希：sha256(salt || password)
+    // 密码哈希：Argon2id v1.3，64 MiB 内存、3 次迭代、16 字节随机盐。
     static std::string hashPassword(std::string_view password) {
-        std::string buf = kPasswordSalt;
-        buf.append(password.data(), password.size());
-        return sha256Hex(buf);
+        std::array<uint8_t, kArgonSaltLength> salt{};
+        if (RAND_bytes(salt.data(), static_cast<int>(salt.size())) != 1)
+            throw std::runtime_error("secure random generation failed");
+
+        const auto encodedLen = argon2_encodedlen(
+            kArgonTimeCost, kArgonMemoryCost, kArgonParallelism,
+            kArgonSaltLength, kArgonHashLength, Argon2_id);
+        std::vector<char> encoded(encodedLen);
+        const int rc = argon2id_hash_encoded(
+            kArgonTimeCost, kArgonMemoryCost, kArgonParallelism,
+            password.data(), password.size(),
+            salt.data(), salt.size(), kArgonHashLength,
+            encoded.data(), encoded.size());
+        if (rc != ARGON2_OK)
+            throw std::runtime_error(
+                std::string("argon2id hash failed: ") + argon2_error_message(rc));
+        return encoded.data();
     }
 
     static bool verifyPassword(std::string_view password,
                                std::string_view storedHash) {
-        auto h = hashPassword(password);
-        if (h.size() != storedHash.size()) return false;
-        // 常量时间比较
-        unsigned diff = 0;
-        for (size_t i = 0; i < h.size(); ++i)
-            diff |= static_cast<unsigned>(h[i] ^ storedHash[i]);
-        return diff == 0;
+        if (storedHash.rfind("$argon2id$", 0) == 0) {
+            const std::string encoded(storedHash);
+            return argon2id_verify(encoded.c_str(),
+                                   password.data(), password.size()) == ARGON2_OK;
+        }
+
+        // 兼容旧库：验证成功后由 UserService 立即升级为 Argon2id。
+        const auto legacy = legacyPasswordHash(password);
+        return legacy.size() == storedHash.size()
+            && CRYPTO_memcmp(legacy.data(), storedHash.data(), legacy.size()) == 0;
+    }
+
+    static bool passwordNeedsRehash(std::string_view storedHash) {
+        if (storedHash.rfind("$argon2id$", 0) != 0) return true;
+        return storedHash.find("$m=65536,t=3,p=1$") == std::string_view::npos;
     }
 
     // -- hmac sha256 ---------------------------------------------------------
@@ -121,6 +145,19 @@ public:
     }
 
 private:
+    static constexpr uint32_t kArgonTimeCost = 3;
+    static constexpr uint32_t kArgonMemoryCost = 64 * 1024;
+    static constexpr uint32_t kArgonParallelism = 1;
+    static constexpr uint32_t kArgonSaltLength = 16;
+    static constexpr uint32_t kArgonHashLength = 32;
+    static constexpr const char* kLegacyPasswordSalt = "drogon_admin_salt_v1";
+
+    static std::string legacyPasswordHash(std::string_view password) {
+        std::string value = kLegacyPasswordSalt;
+        value.append(password.data(), password.size());
+        return sha256Hex(value);
+    }
+
     static std::string toHex(const uint8_t* data, size_t len) {
         static const char* kHex = "0123456789abcdef";
         std::string s;

@@ -30,6 +30,21 @@ public:
                                                      std::string email,
                                                      std::string passwordHash);
 
+    // 公开注册专用：Immediate 事务内判断管理员并写入用户+默认角色。
+    // firstUserOnly=true 时，已有管理员会抛出 registration_closed。
+    drogon::Task<dto::UserDto> registerWithDefaultRole(
+        std::string name,
+        std::string email,
+        std::string passwordHash,
+        bool firstUserOnly);
+
+    // 管理员创建用户：事务内写入用户并绑定普通 user 角色。
+    drogon::Task<dto::UserDto> insertWithRole(
+        std::string name,
+        std::string email,
+        std::string passwordHash,
+        int64_t roleId);
+
     struct PageResult {
         std::vector<dto::UserDto> items;
         int64_t total{0};
@@ -38,6 +53,8 @@ public:
     drogon::Task<PageResult> listPaged(int page, int pageSize, std::string keyword);
 
     drogon::Task<bool> deleteById(int64_t id);
+
+    drogon::Task<> updatePasswordHash(int64_t id, std::string passwordHash);
 
     // 更新基础资料；passwordHash 为空时不改密码
     drogon::Task<std::optional<dto::UserDto>> updateById(int64_t id,

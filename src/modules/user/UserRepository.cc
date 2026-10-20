@@ -68,6 +68,68 @@ UserRepository::insert(std::string name,
     co_return u;
 }
 
+drogon::Task<dto::UserDto>
+UserRepository::registerWithDefaultRole(std::string name,
+                                        std::string email,
+                                        std::string passwordHash,
+                                        bool firstUserOnly) {
+    auto client = db();
+    if (!client) throw std::runtime_error("db client unavailable");
+
+    auto tx = co_await client->newTransactionCoro(
+        drogon::orm::TransactionType::Immediate);
+    auto admins = co_await tx->execSqlCoro(
+        "SELECT COUNT(*) AS c FROM user_roles WHERE role_id=1");
+    const bool hasAdmin =
+        !admins.empty() && admins[0]["c"].as<int64_t>() > 0;
+    if (firstUserOnly && hasAdmin)
+        throw std::runtime_error("registration_closed");
+
+    const int64_t now = common::TimeUtil::nowSec();
+    auto inserted = co_await tx->execSqlCoro(
+        "INSERT INTO users(name,email,password_hash,created_at) VALUES(?,?,?,?)",
+        name, email, passwordHash, now);
+    const int64_t userId = inserted.insertId();
+    const int64_t roleId = hasAdmin ? 2 : 1;
+    co_await tx->execSqlCoro(
+        "INSERT INTO user_roles(user_id,role_id) VALUES(?,?)",
+        userId, roleId);
+
+    dto::UserDto user;
+    user.id = userId;
+    user.name = std::move(name);
+    user.email = std::move(email);
+    user.createdAt = now;
+    co_return user;
+}
+
+drogon::Task<dto::UserDto>
+UserRepository::insertWithRole(std::string name,
+                               std::string email,
+                               std::string passwordHash,
+                               int64_t roleId) {
+    auto client = db();
+    if (!client) throw std::runtime_error("db client unavailable");
+
+    auto tx = co_await client->newTransactionCoro(
+        drogon::orm::TransactionType::Immediate);
+    const int64_t now = common::TimeUtil::nowSec();
+    auto inserted = co_await tx->execSqlCoro(
+        "INSERT INTO users(name,email,password_hash,created_at) VALUES(?,?,?,?)",
+        name, email, passwordHash, now);
+    const int64_t userId = inserted.insertId();
+    co_await tx->execSqlCoro(
+        "INSERT INTO user_roles(user_id,role_id) VALUES(?,?)",
+        userId, roleId);
+
+    dto::UserDto user;
+    user.id = userId;
+    user.name = std::move(name);
+    user.email = std::move(email);
+    user.createdAt = now;
+    co_return user;
+}
+
 drogon::Task<UserRepository::PageResult>
 UserRepository::listPaged(int page, int pageSize, std::string keyword) {
     if (page < 1) page = 1;
@@ -125,6 +187,18 @@ drogon::Task<bool> UserRepository::deleteById(int64_t id) {
     co_await client->execSqlCoro("DELETE FROM user_roles WHERE user_id=?", id);
     auto r = co_await client->execSqlCoro("DELETE FROM users WHERE id=?", id);
     co_return r.affectedRows() > 0;
+}
+
+drogon::Task<> UserRepository::updatePasswordHash(int64_t id,
+                                                  std::string passwordHash) {
+    auto client = db();
+    if (!client) throw std::runtime_error("db client unavailable");
+    auto r = co_await client->execSqlCoro(
+        "UPDATE users SET password_hash=? WHERE id=?",
+        std::move(passwordHash), id);
+    if (r.affectedRows() != 1)
+        throw std::runtime_error("password hash update affected unexpected rows");
+    co_return;
 }
 
 drogon::Task<std::optional<dto::UserDto>>

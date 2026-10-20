@@ -28,14 +28,21 @@ public:
     using std::runtime_error::runtime_error;
 };
 
+class RegistrationClosedError : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
+
 class UserService {
 public:
     UserService() = default;
 
     drogon::Task<std::optional<dto::UserDto>> getById(int64_t id);
 
-    // 注册：写入前对密码做哈希；成功后自动绑定角色——
-    // 系统首个用户晋升 admin，超管邮箱同样 admin，其余为普通 user
+    // 公开注册：遵循 registration_mode；首用户管理员分配在 DB 事务内完成。
+    drogon::Task<dto::UserDto> registerPublic(dto::CreateUserReq req);
+
+    // 管理员创建用户：始终绑定普通 user 角色。
     drogon::Task<dto::UserDto> create(dto::CreateUserReq req);
 
     // 编辑资料：name/email 必填，password 可选（空表示不改）；

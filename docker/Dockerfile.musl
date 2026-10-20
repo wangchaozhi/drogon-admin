@@ -7,6 +7,8 @@ ARG DROGON_VERSION=1.9.13
 ARG TRANTOR_VERSION=1.5.28
 
 RUN apk add --no-cache \
+        argon2-dev \
+        argon2-static \
         build-base \
         cmake \
         file \

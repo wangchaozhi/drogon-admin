@@ -206,6 +206,9 @@ jobs:
         shell: bash
         run: cmake --build build -j
 
+      - name: Run CTest
+        run: ctest --test-dir build -C Release --output-on-failure
+
       # ---------- 产物（所有触发都上传到 workflow artifact，便于 PR/手动下载）----------
       - name: Upload executable (workflow artifact)
         uses: actions/upload-artifact@v7

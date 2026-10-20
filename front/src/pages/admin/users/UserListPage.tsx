@@ -255,8 +255,8 @@ export default function UserListPage() {
             name="password"
             label={editing ? '密码（留空不修改）' : '密码'}
             rules={editing
-              ? [{ min: 6, message: '至少 6 位', validateTrigger: 'onBlur' }]
-              : [{ required: true, message: '请输入密码' }, { min: 6, message: '至少 6 位' }]}
+              ? [{ min: 12, max: 256, message: '密码长度需为 12–256 位', validateTrigger: 'onBlur' }]
+              : [{ required: true, message: '请输入密码' }, { min: 12, max: 256, message: '密码长度需为 12–256 位' }]}
           >
             <Input.Password placeholder={editing ? '不修改可留空' : '至少 6 位'} autoComplete="new-password" />
           </Form.Item>

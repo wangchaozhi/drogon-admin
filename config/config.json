@@ -46,8 +46,8 @@
         }
     ],
     "custom_config": {
-        "jwt_secret": "change-me-in-production",
+        "environment": "development",
         "jwt_expire_seconds": 7200,
-        "super_admin_email": "admin@drogon-admin.local"
+        "registration_mode": "first-user"
     }
 }

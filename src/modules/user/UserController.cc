@@ -58,9 +58,11 @@ drogon::AsyncTask UserController::registerUser(
         co_return;
     }
     try {
-        auto u = co_await svc_.create(*reqDto);
+        auto u = co_await svc_.registerPublic(*reqDto);
         APP_LOG_INFO << "user created id=" << u.id;
         cb(core::Result::ok(u.toJson(), "created"));
+    } catch (const RegistrationClosedError& e) {
+        cb(core::Result::fail(4031, e.what(), drogon::k403Forbidden));
     } catch (const std::exception& e) {
         std::string msg = e.what();
         if (isUniqueViolation(msg)) {

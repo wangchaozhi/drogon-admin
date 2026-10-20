@@ -18,12 +18,14 @@ public:
 
     const std::string& jwtSecret() const { return jwtSecret_; }
     int jwtExpireSeconds() const { return jwtExpireSec_; }
-    const std::string& superAdminEmail() const { return superAdminEmail_; }
+    const std::string& environment() const { return environment_; }
+    const std::string& registrationMode() const { return registrationMode_; }
 
 private:
-    std::string jwtSecret_{"change-me"};
+    std::string jwtSecret_;
     int jwtExpireSec_{7200};
-    std::string superAdminEmail_{"admin@drogon-admin.local"};
+    std::string environment_{"development"};
+    std::string registrationMode_{"first-user"};
 };
 
 } // namespace plugins

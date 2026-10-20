@@ -39,7 +39,7 @@ drogon-admin/
 │       ├── hooks/              # useAuth / useDevice（响应式三端适配）
 │       ├── theme/              # Ant Design 主题定制
 │       └── utils/              # remember 等工具
-├── config/config.json          # Drogon 运行配置（含 db_clients / jwt_secret）
+├── config/config.json          # Drogon 运行配置（数据库、环境与注册策略）
 ├── sql/schema.sql              # 启动时自动应用的建表脚本
 ├── data/                       # SQLite 数据库文件目录（运行时自动创建）
 ├── build.bat / build_vs.bat    # Windows 构建脚本
@@ -53,7 +53,7 @@ drogon-admin/
 1. Visual Studio 2022（含 C++ 桌面开发组件，需支持 C++20 协程）
 2. CMake 3.20+
 3. [vcpkg](https://github.com/microsoft/vcpkg)，并设置环境变量 `VCPKG_ROOT`
-4. Drogon 已启用 `sqlite3` feature，依赖：`drogon[sqlite3]` / `jsoncpp` / `openssl` / `zlib` / `sqlite3`（vcpkg.json 已声明，首次构建会自动触发）
+4. Drogon 已启用 `sqlite3` feature，依赖：`drogon[sqlite3]` / `argon2` / `jsoncpp` / `openssl` / `zlib` / `sqlite3`（vcpkg.json 已声明，首次构建会自动触发）
 
 ### 前端
 1. Node.js 26+
@@ -86,6 +86,16 @@ cd build\Release
 drogon-admin.exe
 ```
 
+开发环境未提供 JWT 密钥时会生成一次性随机密钥，服务重启后现有 token 失效。生产环境必须显式提供至少 32 字符的密钥，否则拒绝启动：
+
+```bat
+set DROGON_ENV=production
+set DROGON_JWT_SECRET=<至少32字符的随机密钥>
+drogon-admin.exe
+```
+
+`DROGON_REGISTRATION_MODE` 支持 `first-user`（默认，仅允许首个管理员注册）、`open`（开放注册，后续用户为普通角色）和 `disabled`（关闭公开注册）。密码使用 Argon2id 随机盐哈希；旧 SHA-256 哈希会在登录成功后自动升级。
+
 ## 前端开发与构建
 
 ```bat
@@ -103,11 +113,11 @@ npm run preview      REM 预览生产构建
 | Method | Path                               | 鉴权 | 权限要求     | 说明                    |
 |--------|------------------------------------|------|--------------|-------------------------|
 | GET    | /api/health                        | 否   | —            | 健康检查                |
-| POST   | /api/auth/register                 | 否   | —            | 注册账号（JSON body）   |
+| POST   | /api/auth/register                 | 否   | —            | 按注册策略创建账号      |
 | POST   | /api/auth/login                    | 否   | —            | 登录，返回 JWT          |
 | GET    | /api/users/me                      | 是   | —            | 获取当前登录用户        |
 | GET    | /api/users/{id}                    | 是   | —            | 按 id 查询用户          |
-| POST   | /api/users                         | 否   | —            | 兼容旧路径，等价于注册  |
+| POST   | /api/users                         | 是   | user:create  | 管理员创建普通用户      |
 | GET    | /api/roles                         | 是   | role:view    | 角色列表                |
 | POST   | /api/roles                         | 是   | role:create  | 创建角色                |
 | PUT    | /api/roles/{id}                    | 是   | role:update  | 更新角色                |
@@ -128,11 +138,11 @@ curl http://127.0.0.1:8080/api/health
 
 curl -X POST http://127.0.0.1:8080/api/auth/register ^
      -H "Content-Type: application/json" ^
-     -d "{\"username\":\"tom\",\"password\":\"123456\",\"email\":\"tom@x.com\"}"
+     -d "{\"name\":\"Tom\",\"password\":\"Correct-Horse-2026!\",\"email\":\"tom@example.com\"}"
 
 curl -X POST http://127.0.0.1:8080/api/auth/login ^
      -H "Content-Type: application/json" ^
-     -d "{\"username\":\"tom\",\"password\":\"123456\"}"
+     -d "{\"email\":\"tom@example.com\",\"password\":\"Correct-Horse-2026!\"}"
 
 curl http://127.0.0.1:8080/api/users/me ^
      -H "Authorization: Bearer <JWT>"
