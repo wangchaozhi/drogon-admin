@@ -1,5 +1,6 @@
 #include "Bootstrap.h"
 #include "Logger.h"
+#include "Metrics.h"
 #include "filters/CorsFilter.h"
 #include <drogon/drogon.h>
 #include <drogon/orm/DbClient.h>
@@ -51,6 +52,7 @@ void prepareRequest(const drogon::HttpRequestPtr& req) {
         requestId = drogon::utils::genRandomString(24);
     attrs->insert("requestId", std::move(requestId));
     attrs->insert("requestStartedAtMicros", steadyNowMicros());
+    Metrics::instance().requestStarted();
 }
 
 void completeRequest(const drogon::HttpRequestPtr& req,
@@ -66,6 +68,8 @@ void completeRequest(const drogon::HttpRequestPtr& req,
     const auto elapsedMicros =
         std::max<int64_t>(0, steadyNowMicros() - startedAt);
     resp->addHeader("X-Request-ID", requestId);
+    Metrics::instance().requestCompleted(
+        static_cast<int>(resp->statusCode()), elapsedMicros);
 
     std::ostringstream details;
     details << "request completed request_id=" << requestId
@@ -76,7 +80,8 @@ void completeRequest(const drogon::HttpRequestPtr& req,
     if (attrs->find("userId"))
         details << " user_id=" << attrs->get<int64_t>("userId");
     if (req->getPath() == "/api/health"
-        || req->getPath() == "/api/ready") {
+        || req->getPath() == "/api/ready"
+        || req->getPath() == "/api/metrics") {
         APP_LOG_DEBUG << details.str();
     } else {
         APP_LOG_INFO << details.str();

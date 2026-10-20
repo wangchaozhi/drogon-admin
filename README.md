@@ -165,6 +165,7 @@ npm run preview      REM 预览生产构建
 |--------|------------------------------------|------|--------------|-------------------------|
 | GET    | /api/health                        | 否   | —            | 健康检查                |
 | GET    | /api/ready                         | 否   | —            | DB/迁移就绪检查         |
+| GET    | /api/metrics                       | 否   | —            | Prometheus 运行指标     |
 | POST   | /api/auth/register                 | 否   | —            | 按注册策略创建账号      |
 | POST   | /api/auth/login                    | 否   | —            | 登录，返回 JWT          |
 | GET    | /api/users/me                      | 是   | —            | 获取当前登录用户        |
@@ -242,6 +243,10 @@ ADD_METHOD_TO(UserController::create, "/api/users",
 - 双路输出：`trantor::AsyncFileLogger` 写 `logs/drogon-admin.log`（自动按大小切片）+ 自定义 `AsyncConsoleSink` 后台线程刷 `stdout`，业务线程只入队，Windows QuickEdit"选中"阻塞 stdout 时不会拖住 HTTP 线程。
 - 每个请求接受或生成 `X-Request-ID`，响应原样返回；结构化访问日志包含 request ID、方法、路径、状态码、耗时微秒和已认证用户 ID，便于反向代理与应用日志关联。
 - 已应用迁移记录在 `schema_migrations`；每个迁移在 `BEGIN IMMEDIATE` 事务中执行，失败会回滚并阻止服务进入就绪状态。
+- `/api/metrics` 输出 Prometheus 文本格式，包含构建版本、运行时长、活动请求数、
+  各状态码类别请求数和请求耗时直方图。该端点不包含用户或路径标签，避免
+  敏感信息及高基数指标；生产环境应继续通过 Compose 的 localhost 绑定或
+  反向代理访问控制将其限制在监控网络。
 
 ## 首个注册用户自动晋升管理员
 

@@ -43,6 +43,10 @@ add_executable(drogon-admin
 )
 
 target_include_directories(drogon-admin PRIVATE src)
+target_compile_definitions(
+    drogon-admin PRIVATE
+    DROGON_ADMIN_VERSION="${PROJECT_VERSION}"
+)
 target_link_libraries(drogon-admin PRIVATE
     Drogon::Drogon
     OpenSSL::SSL

@@ -298,6 +298,19 @@ def run_checks(base_url: str) -> None:
     assert ready["database"] == "ok"
     assert int(ready["migration_count"]) >= 1
 
+    metrics = expect_status(
+        request(base_url, "GET", "/api/metrics"),
+        200,
+        "Prometheus metrics",
+    )
+    assert isinstance(metrics[1], str)
+    assert 'drogon_admin_build_info{version="' in metrics[1]
+    assert 'version="unknown"' not in metrics[1]
+    assert "drogon_admin_http_requests_total" in metrics[1]
+    assert "drogon_admin_http_request_duration_seconds_bucket" in metrics[1]
+    assert metrics[2].get_content_type() == "text/plain"
+    assert metrics[2].get("Cache-Control") == "no-store"
+
     not_found = expect_status(
         request(base_url, "GET", "/api/not-found"),
         404,
