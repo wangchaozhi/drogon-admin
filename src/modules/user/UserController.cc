@@ -422,10 +422,27 @@ drogon::AsyncTask UserController::ready(
             "SELECT COUNT(*) AS migration_count FROM schema_migrations");
         if (rows.empty())
             throw std::runtime_error("migration state unavailable");
+        auto journalMode =
+            co_await db->execSqlCoro("PRAGMA journal_mode");
+        auto foreignKeys =
+            co_await db->execSqlCoro("PRAGMA foreign_keys");
+        auto busyTimeout =
+            co_await db->execSqlCoro("PRAGMA busy_timeout");
+        if (journalMode.empty()
+            || journalMode[0][0].as<std::string>() != "wal"
+            || foreignKeys.empty()
+            || foreignKeys[0][0].as<int>() != 1
+            || busyTimeout.empty()
+            || busyTimeout[0][0].as<int>() < 5000) {
+            throw std::runtime_error("database safety pragmas unavailable");
+        }
 
         Json::Value data;
         data["status"] = "ready";
         data["database"] = "ok";
+        data["journal_mode"] = "wal";
+        data["foreign_keys"] = true;
+        data["busy_timeout_ms"] = busyTimeout[0][0].as<int>();
         data["migration_count"] =
             static_cast<Json::Int64>(
                 rows[0]["migration_count"].as<int64_t>());

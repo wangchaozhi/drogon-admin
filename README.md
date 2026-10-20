@@ -274,6 +274,10 @@ ADD_METHOD_TO(UserController::create, "/api/users",
 
 - 默认使用 SQLite，数据库文件位于 `data/drogon-admin.db`（首次启动自动创建）
 - 启动时先对齐 `sql/schema.sql` 基线，再按文件名执行 `sql/migrations/*.sql`；版本写入 `schema_migrations`
+- 启动时强制启用 WAL、`synchronous=NORMAL`、5 秒 busy timeout 与外键检查；
+  `/api/ready` 会验证这些运行参数，缺失时返回 503
+- RBAC 关联表使用外键约束，用户删除会级联清理角色映射，角色删除前必须先
+  清理用户映射，防止产生孤儿权限记录
 - schema 内置种子数据：默认角色 `admin`（全部权限）与 `user`（仅仪表盘+个人中心）
 - `config/config.json` 中 `db_clients` 段控制连接参数；SQLite 写为单连接更稳妥：
   ```json

@@ -196,6 +196,7 @@ def verify_migration_state(root: Path) -> None:
         expected_versions = {
             "001_user_auth_security",
             "002_email_nocase",
+            "003_rbac_foreign_keys",
         }
         if not expected_versions.issubset(versions):
             raise AssertionError(
@@ -303,6 +304,9 @@ def run_checks(base_url: str) -> None:
     )
     assert ready["status"] == "ready"
     assert ready["database"] == "ok"
+    assert ready["journal_mode"] == "wal"
+    assert ready["foreign_keys"] is True
+    assert int(ready["busy_timeout_ms"]) >= 5000
     assert int(ready["migration_count"]) >= 1
 
     metrics = expect_status(
@@ -712,6 +716,15 @@ def run_checks(base_url: str) -> None:
         ),
         429,
         "correct password while locked",
+    )
+    expect_ok(
+        request(
+            base_url,
+            "DELETE",
+            f"/api/roles/{role_id}",
+            token=admin_token,
+        ),
+        "delete custom role with foreign keys enabled",
     )
 
 

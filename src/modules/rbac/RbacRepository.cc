@@ -93,11 +93,11 @@ drogon::Task<bool> RbacRepository::deleteRole(int64_t id) {
     if (code == "admin" || code == "user")
         throw core::ConflictError("built-in roles cannot be deleted");
 
-    auto res = co_await tx->execSqlCoro("DELETE FROM roles WHERE id=?", id);
     co_await tx->execSqlCoro(
         "DELETE FROM role_permissions WHERE role_id=?", id);
     co_await tx->execSqlCoro(
         "DELETE FROM user_roles WHERE role_id=?", id);
+    auto res = co_await tx->execSqlCoro("DELETE FROM roles WHERE id=?", id);
     co_return res.affectedRows() > 0;
 }
 

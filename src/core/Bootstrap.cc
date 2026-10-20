@@ -182,6 +182,25 @@ bool columnExists(const drogon::orm::DbClientPtr& db,
         });
 }
 
+void configureDatabase(const drogon::orm::DbClientPtr& db) {
+    auto journalMode = db->execSqlSync("PRAGMA journal_mode=WAL");
+    if (journalMode.empty()
+        || journalMode[0][0].as<std::string>() != "wal") {
+        throw std::runtime_error("SQLite WAL mode is unavailable");
+    }
+    db->execSqlSync("PRAGMA synchronous=NORMAL");
+    db->execSqlSync("PRAGMA busy_timeout=5000");
+    db->execSqlSync("PRAGMA foreign_keys=ON");
+
+    auto foreignKeys = db->execSqlSync("PRAGMA foreign_keys");
+    if (foreignKeys.empty() || foreignKeys[0][0].as<int>() != 1)
+        throw std::runtime_error("SQLite foreign key enforcement is unavailable");
+
+    APP_LOG_INFO
+        << "database configured journalMode=wal synchronous=normal "
+           "busyTimeoutMs=5000 foreignKeys=on";
+}
+
 void applySchemaAndMigrations(const drogon::orm::DbClientPtr& db) {
     const auto schemaPath = std::filesystem::path("sql") / "schema.sql";
     const auto schemaStatements = loadSqlStatements(schemaPath);
@@ -270,6 +289,7 @@ void ensureDbDirAndSchema() {
         if (!db)
             throw std::runtime_error("default DbClient is unavailable");
         try {
+            configureDatabase(db);
             applySchemaAndMigrations(db);
         } catch (const std::exception& error) {
             APP_LOG_ERROR << "database migration failed: " << error.what();
