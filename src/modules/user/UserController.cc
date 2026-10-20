@@ -1,5 +1,6 @@
 #include "UserController.h"
 #include "core/DomainError.h"
+#include "core/ErrorHandler.h"
 #include "core/Result.h"
 #include "core/Logger.h"
 #include "dto/CreateUserReq.h"
@@ -9,6 +10,7 @@
 #include "modules/rbac/RbacService.h"
 #include "modules/rbac/dto/RbacReq.h"
 #include "filters/PermissionRegistry.h"
+#include <stdexcept>
 
 namespace modules::user {
 
@@ -70,8 +72,7 @@ drogon::AsyncTask UserController::registerUser(
             cb(core::Result::fail(4090, "email already registered",
                                   drogon::k409Conflict));
         } else {
-            cb(core::Result::fail(5002, "db error: " + msg,
-                                  drogon::k500InternalServerError));
+            cb(core::internalError(req, "register user", e, 5002));
         }
     }
 }
@@ -100,8 +101,7 @@ drogon::AsyncTask UserController::adminCreate(
             cb(core::Result::fail(4090, "email already registered",
                                   drogon::k409Conflict));
         } else {
-            cb(core::Result::fail(5002, "db error: " + msg,
-                                  drogon::k500InternalServerError));
+            cb(core::internalError(req, "create user", e, 5002));
         }
     }
 }
@@ -145,8 +145,7 @@ drogon::AsyncTask UserController::update(
             cb(core::Result::fail(4090, "email already used",
                                   drogon::k409Conflict));
         } else {
-            cb(core::Result::fail(5002, "db error: " + msg,
-                                  drogon::k500InternalServerError));
+            cb(core::internalError(req, "update user", e, 5002));
         }
     }
 }
@@ -187,8 +186,7 @@ drogon::AsyncTask UserController::login(
     } catch (const LoginInvalidError& e) {
         cb(core::Result::fail(4011, e.what(), drogon::k401Unauthorized));
     } catch (const std::exception& e) {
-        cb(core::Result::fail(5003, std::string("db error: ") + e.what(),
-                              drogon::k500InternalServerError));
+        cb(core::internalError(req, "login", e, 5003));
     }
 }
 
@@ -223,8 +221,7 @@ drogon::AsyncTask UserController::me(
         }
         cb(core::Result::ok(std::move(data)));
     } catch (const std::exception& e) {
-        cb(core::Result::fail(5001, std::string("db error: ") + e.what(),
-                              drogon::k500InternalServerError));
+        cb(core::internalError(req, "load current user", e, 5001));
     }
 }
 
@@ -235,11 +232,43 @@ drogon::AsyncTask UserController::list(
     int pageSize = 10;
     std::string keyword;
     try {
+        const auto parseInteger = [](const std::string& value) {
+            size_t parsed = 0;
+            const int result = std::stoi(value, &parsed);
+            if (parsed != value.size())
+                throw std::invalid_argument("trailing characters");
+            return result;
+        };
         auto& params = req->getParameters();
-        if (auto it = params.find("page");      it != params.end()) page = std::stoi(it->second);
-        if (auto it = params.find("page_size"); it != params.end()) pageSize = std::stoi(it->second);
+        if (auto it = params.find("page"); it != params.end())
+            page = parseInteger(it->second);
+        if (auto it = params.find("page_size"); it != params.end())
+            pageSize = parseInteger(it->second);
         if (auto it = params.find("keyword");   it != params.end()) keyword = it->second;
-    } catch (...) { /* 保持默认值 */ }
+    } catch (const std::exception&) {
+        cb(core::Result::fail(
+            4002, "page and page_size must be integers",
+            drogon::k400BadRequest));
+        co_return;
+    }
+    if (page < 1 || page > 1000000) {
+        cb(core::Result::fail(
+            4002, "page must be between 1 and 1000000",
+            drogon::k400BadRequest));
+        co_return;
+    }
+    if (pageSize < 1 || pageSize > 200) {
+        cb(core::Result::fail(
+            4002, "page_size must be between 1 and 200",
+            drogon::k400BadRequest));
+        co_return;
+    }
+    if (keyword.size() > 100) {
+        cb(core::Result::fail(
+            4002, "keyword must not exceed 100 characters",
+            drogon::k400BadRequest));
+        co_return;
+    }
 
     try {
         auto p = co_await svc_.repo().listPaged(page, pageSize, keyword);
@@ -252,13 +281,12 @@ drogon::AsyncTask UserController::list(
         data["page_size"] = pageSize;
         cb(core::Result::ok(std::move(data)));
     } catch (const std::exception& e) {
-        cb(core::Result::fail(5003, std::string("db error: ") + e.what(),
-                              drogon::k500InternalServerError));
+        cb(core::internalError(req, "list users", e, 5003));
     }
 }
 
 drogon::AsyncTask UserController::getById(
-    drogon::HttpRequestPtr /*req*/,
+    drogon::HttpRequestPtr req,
     std::function<void(const drogon::HttpResponsePtr&)> cb,
     int64_t id) {
     APP_LOG_DEBUG << "getById id=" << id;
@@ -270,8 +298,7 @@ drogon::AsyncTask UserController::getById(
         }
         cb(core::Result::ok(u->toJson()));
     } catch (const std::exception& e) {
-        cb(core::Result::fail(5001, std::string("db error: ") + e.what(),
-                              drogon::k500InternalServerError));
+        cb(core::internalError(req, "get user", e, 5001));
     }
 }
 
@@ -297,13 +324,12 @@ drogon::AsyncTask UserController::remove(
     } catch (const core::ConflictError& e) {
         cb(core::Result::fail(4091, e.what(), drogon::k409Conflict));
     } catch (const std::exception& e) {
-        cb(core::Result::fail(5003, std::string("db error: ") + e.what(),
-                              drogon::k500InternalServerError));
+        cb(core::internalError(req, "delete user", e, 5003));
     }
 }
 
 drogon::AsyncTask UserController::getRoles(
-    drogon::HttpRequestPtr /*req*/,
+    drogon::HttpRequestPtr req,
     std::function<void(const drogon::HttpResponsePtr&)> cb,
     int64_t id) {
     try {
@@ -314,8 +340,7 @@ drogon::AsyncTask UserController::getRoles(
         data["role_ids"] = arr;
         cb(core::Result::ok(data));
     } catch (const std::exception& e) {
-        cb(core::Result::fail(5003, std::string("db error: ") + e.what(),
-                              drogon::k500InternalServerError));
+        cb(core::internalError(req, "get user roles", e, 5003));
     }
 }
 
@@ -339,8 +364,7 @@ drogon::AsyncTask UserController::setRoles(
     } catch (const core::ValidationError& e) {
         cb(core::Result::fail(4002, e.what(), drogon::k400BadRequest));
     } catch (const std::exception& e) {
-        cb(core::Result::fail(5003, std::string("db error: ") + e.what(),
-                              drogon::k500InternalServerError));
+        cb(core::internalError(req, "set user roles", e, 5003));
     }
 }
 

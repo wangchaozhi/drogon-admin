@@ -1,5 +1,6 @@
 #include "PermissionController.h"
 #include "RbacService.h"
+#include "core/ErrorHandler.h"
 #include "core/Result.h"
 #include "filters/PermissionRegistry.h"
 
@@ -12,7 +13,7 @@ PermissionController::PermissionController() {
 }
 
 drogon::AsyncTask PermissionController::list(
-    drogon::HttpRequestPtr /*req*/,
+    drogon::HttpRequestPtr req,
     std::function<void(const drogon::HttpResponsePtr&)> cb) {
     try {
         auto perms = co_await RbacService::instance().repo().listPermissions();
@@ -20,8 +21,7 @@ drogon::AsyncTask PermissionController::list(
         for (const auto& p : perms) arr.append(p.toJson());
         cb(core::Result::ok(arr));
     } catch (const std::exception& e) {
-        cb(core::Result::fail(5003, std::string("db error: ") + e.what(),
-                              drogon::k500InternalServerError));
+        cb(core::internalError(req, "list permissions", e, 5003));
     }
 }
 

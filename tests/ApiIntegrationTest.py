@@ -360,6 +360,26 @@ def run_checks(base_url: str) -> None:
         "authenticated profile",
     )
     assert int(me["user"]["id"]) == admin_id
+    expect_status(
+        request(
+            base_url,
+            "GET",
+            "/api/users?page=1x",
+            token=admin_token,
+        ),
+        400,
+        "reject malformed pagination",
+    )
+    expect_status(
+        request(
+            base_url,
+            "GET",
+            "/api/users?page_size=201",
+            token=admin_token,
+        ),
+        400,
+        "reject excessive page size",
+    )
 
     operator = expect_ok(
         request(

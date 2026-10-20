@@ -2,6 +2,7 @@
 #include "RbacService.h"
 #include "dto/RbacReq.h"
 #include "core/DomainError.h"
+#include "core/ErrorHandler.h"
 #include "core/Result.h"
 #include "core/Logger.h"
 #include "filters/PermissionRegistry.h"
@@ -19,7 +20,7 @@ RoleController::RoleController() {
 }
 
 drogon::AsyncTask RoleController::list(
-    drogon::HttpRequestPtr /*req*/,
+    drogon::HttpRequestPtr req,
     std::function<void(const drogon::HttpResponsePtr&)> cb) {
     try {
         auto roles = co_await RbacService::instance().repo().listRoles();
@@ -27,8 +28,7 @@ drogon::AsyncTask RoleController::list(
         for (const auto& r : roles) arr.append(r.toJson());
         cb(core::Result::ok(arr));
     } catch (const std::exception& e) {
-        cb(core::Result::fail(5003, std::string("db error: ") + e.what(),
-                              drogon::k500InternalServerError));
+        cb(core::internalError(req, "list roles", e, 5003));
     }
 }
 
@@ -51,8 +51,7 @@ drogon::AsyncTask RoleController::create(
         RbacService::instance().invalidateAll();
         cb(core::Result::ok(saved.toJson(), "created"));
     } catch (const std::exception& e) {
-        cb(core::Result::fail(5003, std::string("db error: ") + e.what(),
-                              drogon::k500InternalServerError));
+        cb(core::internalError(req, "create role", e, 5003));
     }
 }
 
@@ -75,13 +74,12 @@ drogon::AsyncTask RoleController::update(
         auto saved = co_await RbacService::instance().repo().getRole(id);
         cb(core::Result::ok(saved ? saved->toJson() : Json::nullValue, "updated"));
     } catch (const std::exception& e) {
-        cb(core::Result::fail(5003, std::string("db error: ") + e.what(),
-                              drogon::k500InternalServerError));
+        cb(core::internalError(req, "update role", e, 5003));
     }
 }
 
 drogon::AsyncTask RoleController::remove(
-    drogon::HttpRequestPtr /*req*/,
+    drogon::HttpRequestPtr req,
     std::function<void(const drogon::HttpResponsePtr&)> cb,
     int64_t id) {
     try {
@@ -95,13 +93,12 @@ drogon::AsyncTask RoleController::remove(
     } catch (const core::ConflictError& e) {
         cb(core::Result::fail(4091, e.what(), drogon::k409Conflict));
     } catch (const std::exception& e) {
-        cb(core::Result::fail(5003, std::string("db error: ") + e.what(),
-                              drogon::k500InternalServerError));
+        cb(core::internalError(req, "delete role", e, 5003));
     }
 }
 
 drogon::AsyncTask RoleController::getPerms(
-    drogon::HttpRequestPtr /*req*/,
+    drogon::HttpRequestPtr req,
     std::function<void(const drogon::HttpResponsePtr&)> cb,
     int64_t id) {
     try {
@@ -112,8 +109,7 @@ drogon::AsyncTask RoleController::getPerms(
         body["permission_ids"] = arr;
         cb(core::Result::ok(body));
     } catch (const std::exception& e) {
-        cb(core::Result::fail(5003, std::string("db error: ") + e.what(),
-                              drogon::k500InternalServerError));
+        cb(core::internalError(req, "get role permissions", e, 5003));
     }
 }
 
@@ -137,8 +133,7 @@ drogon::AsyncTask RoleController::setPerms(
     } catch (const core::ValidationError& e) {
         cb(core::Result::fail(4002, e.what(), drogon::k400BadRequest));
     } catch (const std::exception& e) {
-        cb(core::Result::fail(5003, std::string("db error: ") + e.what(),
-                              drogon::k500InternalServerError));
+        cb(core::internalError(req, "set role permissions", e, 5003));
     }
 }
 

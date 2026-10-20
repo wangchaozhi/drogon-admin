@@ -1,6 +1,7 @@
 #include "MenuController.h"
 #include "RbacService.h"
 #include "dto/RbacReq.h"
+#include "core/ErrorHandler.h"
 #include "core/Result.h"
 #include "filters/PermissionRegistry.h"
 
@@ -16,7 +17,7 @@ MenuController::MenuController() {
 }
 
 drogon::AsyncTask MenuController::list(
-    drogon::HttpRequestPtr /*req*/,
+    drogon::HttpRequestPtr req,
     std::function<void(const drogon::HttpResponsePtr&)> cb) {
     try {
         auto items = co_await RbacService::instance().repo().listMenus();
@@ -24,13 +25,12 @@ drogon::AsyncTask MenuController::list(
         for (const auto& m : items) arr.append(m.toJson());
         cb(core::Result::ok(arr));
     } catch (const std::exception& e) {
-        cb(core::Result::fail(5003, std::string("db error: ") + e.what(),
-                              drogon::k500InternalServerError));
+        cb(core::internalError(req, "list menus", e, 5003));
     }
 }
 
 drogon::AsyncTask MenuController::tree(
-    drogon::HttpRequestPtr /*req*/,
+    drogon::HttpRequestPtr req,
     std::function<void(const drogon::HttpResponsePtr&)> cb) {
     try {
         auto roots = co_await RbacService::instance().repo().menuTree();
@@ -38,8 +38,7 @@ drogon::AsyncTask MenuController::tree(
         for (const auto& m : roots) arr.append(m.toJson());
         cb(core::Result::ok(arr));
     } catch (const std::exception& e) {
-        cb(core::Result::fail(5003, std::string("db error: ") + e.what(),
-                              drogon::k500InternalServerError));
+        cb(core::internalError(req, "load menu tree", e, 5003));
     }
 }
 
@@ -56,8 +55,7 @@ drogon::AsyncTask MenuController::create(
         RbacService::instance().invalidateAll();
         cb(core::Result::ok(saved.toJson(), "created"));
     } catch (const std::exception& e) {
-        cb(core::Result::fail(5003, std::string("db error: ") + e.what(),
-                              drogon::k500InternalServerError));
+        cb(core::internalError(req, "create menu", e, 5003));
     }
 }
 
@@ -80,13 +78,12 @@ drogon::AsyncTask MenuController::update(
         auto saved = co_await RbacService::instance().repo().getMenu(id);
         cb(core::Result::ok(saved ? saved->toJson() : Json::nullValue, "updated"));
     } catch (const std::exception& e) {
-        cb(core::Result::fail(5003, std::string("db error: ") + e.what(),
-                              drogon::k500InternalServerError));
+        cb(core::internalError(req, "update menu", e, 5003));
     }
 }
 
 drogon::AsyncTask MenuController::remove(
-    drogon::HttpRequestPtr /*req*/,
+    drogon::HttpRequestPtr req,
     std::function<void(const drogon::HttpResponsePtr&)> cb,
     int64_t id) {
     try {
@@ -98,8 +95,7 @@ drogon::AsyncTask MenuController::remove(
         RbacService::instance().invalidateAll();
         cb(core::Result::ok(Json::nullValue, "deleted"));
     } catch (const std::exception& e) {
-        cb(core::Result::fail(5003, std::string("db error: ") + e.what(),
-                              drogon::k500InternalServerError));
+        cb(core::internalError(req, "delete menu", e, 5003));
     }
 }
 
