@@ -126,6 +126,7 @@ DROGON_CORS_MAX_AGE_SECONDS=600
 cd front
 npm install          REM 首次执行
 npm run dev          REM 本地开发（默认 http://localhost:5173）
+npm test             REM Vitest 组件与认证客户端测试
 npm run build        REM 生产构建，产物在 front/dist
 npm run preview      REM 预览生产构建
 ```

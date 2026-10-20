@@ -94,11 +94,13 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Test
+        run: npm test
+
       - name: Build
         run: npm run build
 
       - name: Upload dist artifact (workflow artifact)
-        if: matrix.node == '24'
         uses: actions/upload-artifact@v7
         with:
           name: front-dist
