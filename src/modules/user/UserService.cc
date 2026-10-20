@@ -92,16 +92,19 @@ UserService::login(dto::LoginReq req) {
             "too many login attempts; try again later",
             static_cast<int>(std::max<int64_t>(1, rec->lockedUntil - now)));
     }
-    if (!rec || !common::CryptoUtil::verifyPassword(req.password, rec->passwordHash)) {
-        if (rec) {
-            const auto state = co_await repo_.recordLoginFailure(
-                rec->user.id, cfg.maxFailures, cfg.lockSeconds);
-            if (state.lockedUntil > now) {
-                throw LoginThrottledError(
-                    "too many login attempts; try again later",
-                    static_cast<int>(
-                        std::max<int64_t>(1, state.lockedUntil - now)));
-            }
+    if (!rec) {
+        common::CryptoUtil::performDummyPasswordCheck(req.password);
+        throw LoginInvalidError("email or password incorrect");
+    }
+    if (!common::CryptoUtil::verifyPassword(
+            req.password, rec->passwordHash)) {
+        const auto state = co_await repo_.recordLoginFailure(
+            rec->user.id, cfg.maxFailures, cfg.lockSeconds);
+        if (state.lockedUntil > now) {
+            throw LoginThrottledError(
+                "too many login attempts; try again later",
+                static_cast<int>(
+                    std::max<int64_t>(1, state.lockedUntil - now)));
         }
         throw LoginInvalidError("email or password incorrect");
     }

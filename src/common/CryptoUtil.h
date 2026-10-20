@@ -127,6 +127,11 @@ public:
             && CRYPTO_memcmp(legacy.data(), storedHash.data(), legacy.size()) == 0;
     }
 
+    // 用户不存在时仍执行同成本的 Argon2id 校验，减少登录邮箱枚举时序差异。
+    static void performDummyPasswordCheck(std::string_view password) {
+        (void)verifyPassword(password, kDummyPasswordHash);
+    }
+
     static bool passwordNeedsRehash(std::string_view storedHash) {
         if (storedHash.rfind("$argon2id$", 0) != 0) return true;
         return storedHash.find("$m=65536,t=3,p=1$") == std::string_view::npos;
@@ -151,6 +156,10 @@ private:
     static constexpr uint32_t kArgonSaltLength = 16;
     static constexpr uint32_t kArgonHashLength = 32;
     static constexpr const char* kLegacyPasswordSalt = "drogon_admin_salt_v1";
+    static constexpr const char* kDummyPasswordHash =
+        "$argon2id$v=19$m=65536,t=3,p=1$"
+        "GmPQlNEtYLOZ2dUBXqMtlQ$"
+        "sZ+Z352rSnDfmJSjetdIE2A9nqP6PApE3LhGRebePoA";
 
     static std::string legacyPasswordHash(std::string_view password) {
         std::string value = kLegacyPasswordSalt;

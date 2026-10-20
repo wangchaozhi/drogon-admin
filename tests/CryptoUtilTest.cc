@@ -35,6 +35,7 @@ int main() {
     assert(CryptoUtil::verifyPassword(password, first));
     assert(!CryptoUtil::verifyPassword("wrong password", first));
     assert(!CryptoUtil::passwordNeedsRehash(first));
+    CryptoUtil::performDummyPasswordCheck("unknown-account-password");
 
     // Legacy sha256("drogon_admin_salt_v1" || "legacy-password").
     constexpr auto legacy =

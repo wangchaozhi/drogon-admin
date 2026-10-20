@@ -336,6 +336,20 @@ def run_checks(base_url: str) -> None:
         "invalid login",
     )
     assert invalid_login[2].get("Cache-Control") == "no-store"
+    unknown_login = expect_status(
+        request(
+            base_url,
+            "POST",
+            "/api/auth/login",
+            {
+                "email": "unknown@example.com",
+                "password": "Unknown-Horse-2026!",
+            },
+        ),
+        401,
+        "unknown account login",
+    )
+    assert unknown_login[1]["message"] == "email or password incorrect"
 
     admin_password = "Admin-Horse-2026!"
     operator_password = "Operator-Horse-2026!"
