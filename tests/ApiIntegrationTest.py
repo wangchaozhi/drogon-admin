@@ -138,6 +138,9 @@ def write_config(root: Path, port: int) -> None:
             "registration_mode": "first-user",
             "login_max_failures": 5,
             "login_lock_seconds": 60,
+            "login_rate_limit_global": 1000,
+            "login_rate_limit_per_identifier": 15,
+            "login_rate_limit_window_seconds": 60,
             "cors_allowed_origins": [ALLOWED_ORIGIN],
             "cors_allow_credentials": False,
             "cors_max_age_seconds": 600,
@@ -415,6 +418,7 @@ def run_checks(base_url: str) -> None:
     assert 'version="unknown"' not in metrics[1]
     assert "drogon_admin_http_requests_total" in metrics[1]
     assert "drogon_admin_http_request_duration_seconds_bucket" in metrics[1]
+    assert "drogon_admin_login_rate_limited_total" in metrics[1]
     assert "drogon_admin_service_ready 1" in metrics[1]
     assert "drogon_admin_service_draining 0" in metrics[1]
     assert metrics[2].get_content_type() == "text/plain"
@@ -1215,6 +1219,44 @@ def run_checks(base_url: str) -> None:
         request(base_url, "GET", "/api/users/me", token=admin_token),
         401,
         "token after server-side logout",
+    )
+
+    rate_limited_login = {
+        "email": "rate-limit-probe@example.com",
+        "password": "Unknown-Horse-2026!",
+    }
+    for attempt in range(15):
+        expect_status(
+            request(
+                base_url,
+                "POST",
+                "/api/auth/login",
+                rate_limited_login,
+            ),
+            401,
+            f"login rate-limit budget attempt {attempt + 1}",
+        )
+    throttled = expect_status(
+        request(
+            base_url,
+            "POST",
+            "/api/auth/login",
+            rate_limited_login,
+        ),
+        429,
+        "login identifier rate limit",
+    )
+    assert throttled[1]["code"] == 4292
+    assert int(throttled[2].get("Retry-After", "0")) > 0
+
+    metrics_after_throttle = expect_status(
+        request(base_url, "GET", "/api/metrics"),
+        200,
+        "login rate-limit metrics",
+    )
+    assert (
+        'drogon_admin_login_rate_limited_total{scope="identifier"} 1'
+        in metrics_after_throttle[1]
     )
 
 

@@ -14,6 +14,7 @@ public:
 
     void requestStarted() noexcept;
     void requestCompleted(int statusCode, int64_t durationMicros) noexcept;
+    void loginRateLimited(bool globalLimit) noexcept;
     std::string renderPrometheus() const;
 
 private:
@@ -41,6 +42,7 @@ private:
     std::array<std::atomic<uint64_t>, 5> statusClasses_{};
     std::array<std::atomic<uint64_t>, kDurationBucketsMicros.size()>
         durationBuckets_{};
+    std::array<std::atomic<uint64_t>, 2> loginRateLimited_{};
 };
 
 } // namespace core

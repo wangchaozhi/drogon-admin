@@ -89,6 +89,14 @@ if(BUILD_TESTING)
     target_link_libraries(lifecycle-test PRIVATE Threads::Threads)
     add_test(NAME lifecycle-test COMMAND lifecycle-test)
 
+    add_executable(
+        login-rate-limiter-test
+        tests/LoginRateLimiterTest.cc
+        src/core/LoginRateLimiter.cc
+    )
+    target_include_directories(login-rate-limiter-test PRIVATE src)
+    add_test(NAME login-rate-limiter-test COMMAND login-rate-limiter-test)
+
     add_test(
         NAME release-version-test
         COMMAND "${Python3_EXECUTABLE}"

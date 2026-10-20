@@ -1,5 +1,6 @@
 #include "ConfigPlugin.h"
 #include "core/Lifecycle.h"
+#include "core/LoginRateLimiter.h"
 #include "core/Logger.h"
 #include <drogon/drogon.h>
 #include <openssl/rand.h>
@@ -126,6 +127,22 @@ void ConfigPlugin::initAndStart(const Json::Value& /*pluginCfg*/) {
         "DROGON_LOGIN_MAX_FAILURES", loginMaxFailures_);
     loginLockSeconds_ = intEnvOrDefault(
         "DROGON_LOGIN_LOCK_SECONDS", loginLockSeconds_);
+    if (custom.isMember("login_rate_limit_global"))
+        loginRateLimitGlobal_ = custom["login_rate_limit_global"].asInt();
+    if (custom.isMember("login_rate_limit_per_identifier"))
+        loginRateLimitPerIdentifier_ =
+            custom["login_rate_limit_per_identifier"].asInt();
+    if (custom.isMember("login_rate_limit_window_seconds"))
+        loginRateLimitWindowSeconds_ =
+            custom["login_rate_limit_window_seconds"].asInt();
+    loginRateLimitGlobal_ = intEnvOrDefault(
+        "DROGON_LOGIN_RATE_LIMIT_GLOBAL", loginRateLimitGlobal_);
+    loginRateLimitPerIdentifier_ = intEnvOrDefault(
+        "DROGON_LOGIN_RATE_LIMIT_PER_IDENTIFIER",
+        loginRateLimitPerIdentifier_);
+    loginRateLimitWindowSeconds_ = intEnvOrDefault(
+        "DROGON_LOGIN_RATE_LIMIT_WINDOW_SECONDS",
+        loginRateLimitWindowSeconds_);
 
     if (custom.isMember("cors_allowed_origins")) {
         const auto& origins = custom["cors_allowed_origins"];
@@ -173,6 +190,20 @@ void ConfigPlugin::initAndStart(const Json::Value& /*pluginCfg*/) {
     if (loginLockSeconds_ < 30 || loginLockSeconds_ > 86400)
         throw std::runtime_error(
             "login_lock_seconds must be between 30 and 86400");
+    if (loginRateLimitGlobal_ < 10 || loginRateLimitGlobal_ > 100000)
+        throw std::runtime_error(
+            "login_rate_limit_global must be between 10 and 100000");
+    if (loginRateLimitPerIdentifier_ < 3
+        || loginRateLimitPerIdentifier_ > loginRateLimitGlobal_) {
+        throw std::runtime_error(
+            "login_rate_limit_per_identifier must be between 3 and "
+            "login_rate_limit_global");
+    }
+    if (loginRateLimitWindowSeconds_ < 1
+        || loginRateLimitWindowSeconds_ > 3600) {
+        throw std::runtime_error(
+            "login_rate_limit_window_seconds must be between 1 and 3600");
+    }
     if (corsMaxAgeSeconds_ < 0 || corsMaxAgeSeconds_ > 86400)
         throw std::runtime_error(
             "cors_max_age_seconds must be between 0 and 86400");
@@ -212,11 +243,21 @@ void ConfigPlugin::initAndStart(const Json::Value& /*pluginCfg*/) {
 
     core::Lifecycle::instance().configureGracePeriod(
         shutdownGraceSeconds_);
+    core::LoginRateLimiter::instance().configure(
+        loginRateLimitGlobal_,
+        loginRateLimitPerIdentifier_,
+        loginRateLimitWindowSeconds_,
+        10000);
     APP_LOG_INFO << "ConfigPlugin loaded, environment=" << environment_
                  << ", jwtExpireSec=" << jwtExpireSec_
                  << ", registrationMode=" << registrationMode_
                  << ", loginMaxFailures=" << loginMaxFailures_
                  << ", loginLockSeconds=" << loginLockSeconds_
+                 << ", loginRateLimitGlobal=" << loginRateLimitGlobal_
+                 << ", loginRateLimitPerIdentifier="
+                 << loginRateLimitPerIdentifier_
+                 << ", loginRateLimitWindowSeconds="
+                 << loginRateLimitWindowSeconds_
                  << ", corsOrigins=" << corsAllowedOrigins_.size()
                  << ", corsCredentials=" << corsAllowCredentials_
                  << ", hsts=" << hstsEnabled_

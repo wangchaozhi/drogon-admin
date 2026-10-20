@@ -24,6 +24,13 @@ public:
     const std::string& registrationMode() const { return registrationMode_; }
     int loginMaxFailures() const { return loginMaxFailures_; }
     int loginLockSeconds() const { return loginLockSeconds_; }
+    int loginRateLimitGlobal() const { return loginRateLimitGlobal_; }
+    int loginRateLimitPerIdentifier() const {
+        return loginRateLimitPerIdentifier_;
+    }
+    int loginRateLimitWindowSeconds() const {
+        return loginRateLimitWindowSeconds_;
+    }
     bool isCorsOriginAllowed(std::string_view origin) const;
     bool corsAllowCredentials() const { return corsAllowCredentials_; }
     int corsMaxAgeSeconds() const { return corsMaxAgeSeconds_; }
@@ -37,6 +44,9 @@ private:
     std::string registrationMode_{"first-user"};
     int loginMaxFailures_{5};
     int loginLockSeconds_{900};
+    int loginRateLimitGlobal_{120};
+    int loginRateLimitPerIdentifier_{10};
+    int loginRateLimitWindowSeconds_{60};
     std::vector<std::string> corsAllowedOrigins_;
     bool corsAllowCredentials_{false};
     int corsMaxAgeSeconds_{600};

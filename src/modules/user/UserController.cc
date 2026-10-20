@@ -1,7 +1,10 @@
 #include "UserController.h"
+#include "common/CryptoUtil.h"
 #include "core/DomainError.h"
 #include "core/ErrorHandler.h"
 #include "core/Lifecycle.h"
+#include "core/LoginRateLimiter.h"
+#include "core/Metrics.h"
 #include "core/Result.h"
 #include "core/Logger.h"
 #include "dto/ChangePasswordReq.h"
@@ -199,6 +202,27 @@ drogon::AsyncTask UserController::login(
     auto reqDto = dto::LoginReq::parse(*json, err);
     if (!reqDto) {
         cb(core::Result::fail(4002, err));
+        co_return;
+    }
+    const auto rateLimit = core::LoginRateLimiter::instance().check(
+        common::CryptoUtil::sha256Hex(reqDto->email));
+    if (!rateLimit.allowed) {
+        core::Metrics::instance().loginRateLimited(rateLimit.globalLimit);
+        auto resp = core::Result::fail(
+            4292,
+            "too many login requests; try again later",
+            drogon::k429TooManyRequests);
+        resp->addHeader(
+            "Retry-After", std::to_string(rateLimit.retryAfterSeconds));
+        const auto attrs = req->attributes();
+        APP_LOG_WARN
+            << "login rate limited scope="
+            << (rateLimit.globalLimit ? "global" : "identifier")
+            << " request_id="
+            << (attrs && attrs->find("requestId")
+                    ? attrs->get<std::string>("requestId")
+                    : "unknown");
+        cb(resp);
         co_return;
     }
     try {

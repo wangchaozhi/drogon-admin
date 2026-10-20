@@ -44,6 +44,11 @@ void Metrics::requestCompleted(
     }
 }
 
+void Metrics::loginRateLimited(bool globalLimit) noexcept {
+    loginRateLimited_[globalLimit ? 1 : 0].fetch_add(
+        1, std::memory_order_relaxed);
+}
+
 std::string Metrics::renderPrometheus() const {
     std::ostringstream output;
     output << std::fixed << std::setprecision(6);
@@ -110,7 +115,14 @@ std::string Metrics::renderPrometheus() const {
                / 1'000'000.0
         << '\n'
         << "drogon_admin_http_request_duration_seconds_count "
-        << completed << '\n';
+        << completed << '\n'
+        << "# HELP drogon_admin_login_rate_limited_total "
+           "Login requests rejected by the application rate limiter.\n"
+        << "# TYPE drogon_admin_login_rate_limited_total counter\n"
+        << "drogon_admin_login_rate_limited_total{scope=\"identifier\"} "
+        << loginRateLimited_[0].load(std::memory_order_relaxed) << '\n'
+        << "drogon_admin_login_rate_limited_total{scope=\"global\"} "
+        << loginRateLimited_[1].load(std::memory_order_relaxed) << '\n';
     return output.str();
 }
 
