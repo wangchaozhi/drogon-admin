@@ -12,6 +12,8 @@ on:
       - "sql/**"
       - "CMakeLists.txt"
       - "docker/Dockerfile.musl"
+      - ".dockerignore"
+      - "compose.yml"
       - ".github/workflows/musl-release.yml"
   workflow_dispatch:
 
@@ -75,8 +77,8 @@ jobs:
           pid=$!
           trap 'kill "$pid" 2>/dev/null || true' EXIT
           for attempt in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:8080/api/health >health.json; then
-              cat health.json
+            if curl --fail --silent http://127.0.0.1:8080/api/ready >ready.json; then
+              cat ready.json
               exit 0
             fi
             sleep 1

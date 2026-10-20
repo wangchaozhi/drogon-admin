@@ -1,0 +1,14 @@
+.git
+.github
+.idea
+.vscode
+.vs
+build
+build-*
+cmake-build-*
+data
+logs
+uploads
+front
+out
+*.log

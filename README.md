@@ -40,6 +40,8 @@ drogon-admin/
 │       ├── theme/              # Ant Design 主题定制
 │       └── utils/              # remember 等工具
 ├── config/config.json          # Drogon 运行配置（数据库、环境与注册策略）
+├── docker/Dockerfile.musl      # 静态 musl 构建 + 非 root 运行镜像
+├── compose.yml                 # 持久化数据与加固后的本地部署
 ├── sql/
 │   ├── schema.sql              # 当前完整基线（新安装）
 │   └── migrations/             # 按文件名排序的版本化增量迁移
@@ -121,6 +123,23 @@ DROGON_CORS_MAX_AGE_SECONDS=600
 404）统一附加 CORS 与安全响应头，认证响应使用 `Cache-Control: no-store`。
 
 推荐由 Nginx/Caddy/云负载均衡终止 TLS，并让 Drogon 仅对内网监听。确认所有公网流量均为 HTTPS 后再设置 `DROGON_ENABLE_HSTS=true`；否则不要提前启用 HSTS。
+
+## 容器部署
+
+生产镜像使用 Alpine 多阶段构建，最终运行静态 musl 可执行文件，并以 UID
+10001、只读根文件系统、无 Linux capabilities 启动：
+
+```bash
+cp .env.example .env
+# 编辑 .env，至少设置 32 字符以上的随机 DROGON_JWT_SECRET
+docker compose up -d --build
+docker compose ps
+curl http://127.0.0.1:8080/api/ready
+```
+
+Compose 默认仅绑定 `127.0.0.1`，应由同机反向代理提供公网 HTTPS。SQLite、
+日志和上传目录分别保存在命名卷中；升级前应备份数据卷。容器健康检查调用
+`/api/ready`，而 `/api/health` 仅用于进程存活检查。
 
 ## 前端开发与构建
 
@@ -218,6 +237,7 @@ ADD_METHOD_TO(UserController::create, "/api/users",
 ## 日志
 
 - 双路输出：`trantor::AsyncFileLogger` 写 `logs/drogon-admin.log`（自动按大小切片）+ 自定义 `AsyncConsoleSink` 后台线程刷 `stdout`，业务线程只入队，Windows QuickEdit"选中"阻塞 stdout 时不会拖住 HTTP 线程。
+- 每个请求接受或生成 `X-Request-ID`，响应原样返回；结构化访问日志包含 request ID、方法、路径、状态码、耗时微秒和已认证用户 ID，便于反向代理与应用日志关联。
 - 已应用迁移记录在 `schema_migrations`；每个迁移在 `BEGIN IMMEDIATE` 事务中执行，失败会回滚并阻止服务进入就绪状态。
 
 ## 首个注册用户自动晋升管理员

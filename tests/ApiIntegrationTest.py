@@ -242,6 +242,7 @@ def run_checks(base_url: str) -> None:
     assert preflight[2].get("Access-Control-Allow-Origin") == ALLOWED_ORIGIN
     assert preflight[2].get("Access-Control-Max-Age") == "600"
     assert preflight[2].get("Strict-Transport-Security")
+    assert preflight[2].get("X-Request-ID")
 
     expect_status(
         request(
@@ -277,13 +278,17 @@ def run_checks(base_url: str) -> None:
             base_url,
             "GET",
             "/api/health",
-            headers={"Origin": ALLOWED_ORIGIN},
+            headers={
+                "Origin": ALLOWED_ORIGIN,
+                "X-Request-ID": "integration-request-123",
+            },
         ),
         200,
         "health",
     )
     assert health[2].get("Access-Control-Allow-Origin") == ALLOWED_ORIGIN
     assert health[2].get("X-Content-Type-Options") == "nosniff"
+    assert health[2].get("X-Request-ID") == "integration-request-123"
 
     ready = expect_ok(
         request(base_url, "GET", "/api/ready"),

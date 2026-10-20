@@ -124,7 +124,9 @@ void CorsFilter::applyResponseHeaders(
     if (origin.empty() || !cfg->isCorsOriginAllowed(origin)) return;
 
     resp->addHeader("Access-Control-Allow-Origin", origin);
-    resp->addHeader("Access-Control-Expose-Headers", "Retry-After");
+    resp->addHeader(
+        "Access-Control-Expose-Headers",
+        "Retry-After,X-Request-ID");
     if (cfg->corsAllowCredentials())
         resp->addHeader("Access-Control-Allow-Credentials", "true");
 

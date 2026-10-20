@@ -7,6 +7,7 @@
 #include <trantor/utils/Logger.h>
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <condition_variable>
 #include <cstdio>
 #include <deque>
@@ -23,6 +24,64 @@
 namespace core {
 
 namespace {
+
+int64_t steadyNowMicros() {
+    return std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+bool validRequestId(const std::string& value) {
+    return value.size() >= 8
+        && value.size() <= 128
+        && std::all_of(
+            value.begin(), value.end(),
+            [](unsigned char c) {
+                return std::isalnum(c)
+                    || c == '-'
+                    || c == '_'
+                    || c == '.';
+            });
+}
+
+void prepareRequest(const drogon::HttpRequestPtr& req) {
+    auto attrs = req->attributes();
+    if (attrs->find("requestId")) return;
+    auto requestId = req->getHeader("X-Request-ID");
+    if (!validRequestId(requestId))
+        requestId = drogon::utils::genRandomString(24);
+    attrs->insert("requestId", std::move(requestId));
+    attrs->insert("requestStartedAtMicros", steadyNowMicros());
+}
+
+void completeRequest(const drogon::HttpRequestPtr& req,
+                     const drogon::HttpResponsePtr& resp) {
+    auto attrs = req->attributes();
+    if (attrs->find("requestCompleted")) return;
+    if (!attrs->find("requestId")) prepareRequest(req);
+    attrs->insert("requestCompleted", true);
+
+    const auto requestId = attrs->get<std::string>("requestId");
+    const auto startedAt =
+        attrs->get<int64_t>("requestStartedAtMicros");
+    const auto elapsedMicros =
+        std::max<int64_t>(0, steadyNowMicros() - startedAt);
+    resp->addHeader("X-Request-ID", requestId);
+
+    std::ostringstream details;
+    details << "request completed request_id=" << requestId
+            << " method=" << req->methodString()
+            << " path=" << req->getPath()
+            << " status=" << static_cast<int>(resp->statusCode())
+            << " duration_us=" << elapsedMicros;
+    if (attrs->find("userId"))
+        details << " user_id=" << attrs->get<int64_t>("userId");
+    if (req->getPath() == "/api/health"
+        || req->getPath() == "/api/ready") {
+        APP_LOG_DEBUG << details.str();
+    } else {
+        APP_LOG_INFO << details.str();
+    }
+}
 
 // 读取 SQL 文件并按分号切分为多条语句（忽略空语句和纯注释行）。
 std::vector<std::string> loadSqlStatements(
@@ -330,14 +389,19 @@ void Bootstrap::init(const std::string& configPath) {
 
     // CORS 必须覆盖 404/鉴权失败等所有响应，因此使用全局 advice，而非逐路由挂 Filter。
     app.registerSyncAdvice([](const drogon::HttpRequestPtr& req) {
-        if (filters::CorsFilter::isPreflight(req))
-            return filters::CorsFilter::handlePreflight(req);
+        prepareRequest(req);
+        if (filters::CorsFilter::isPreflight(req)) {
+            auto resp = filters::CorsFilter::handlePreflight(req);
+            completeRequest(req, resp);
+            return resp;
+        }
         return drogon::HttpResponsePtr{};
     });
     app.registerPreSendingAdvice(
         [](const drogon::HttpRequestPtr& req,
            const drogon::HttpResponsePtr& resp) {
             filters::CorsFilter::applyResponseHeaders(req, resp);
+            completeRequest(req, resp);
         });
 
     // 启动 banner
