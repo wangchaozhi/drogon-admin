@@ -319,7 +319,14 @@ ADD_METHOD_TO(UserController::create, "/api/users",
 ## 日志
 
 - 双路输出：`trantor::AsyncFileLogger` 写 `logs/drogon-admin.log`（自动按大小切片）+ 自定义 `AsyncConsoleSink` 后台线程刷 `stdout`，业务线程只入队，Windows QuickEdit"选中"阻塞 stdout 时不会拖住 HTTP 线程。
-- 每个请求接受或生成 `X-Request-ID`，响应原样返回；结构化访问日志包含 request ID、方法、路径、状态码、耗时微秒和已认证用户 ID，便于反向代理与应用日志关联。
+- 每个请求接受或生成 `X-Request-ID`，仅接受 8–128 位字母、数字、
+  `.`、`_`、`-`，非法值会被替换；该 ID 会贯通响应头、错误日志和审计记录，
+  便于反向代理、应用日志与操作审计关联。
+- 访问日志以单行 JSON 输出 `request_id`、方法、路由模板、状态码、耗时微秒
+  和已认证用户 ID；4xx/5xx 分别使用 WARN/ERROR。日志只记录 Drogon 匹配后的
+  路由模板，未匹配请求统一记为 `<unmatched>`，不记录原始 URL、查询字符串、
+  Authorization、Cookie 或请求体，避免动态标识符、token、密码及查询敏感值
+  落日志。
 - 已应用迁移记录在 `schema_migrations`；每个迁移在 `BEGIN IMMEDIATE` 事务中执行，失败会回滚并阻止服务进入就绪状态。记录同时保存 SQL 文件标准化换行后的 SHA-256 校验和，后续启动会拒绝被修改或缺失的历史迁移，防止环境间静默漂移；已发布迁移必须保持不可变，更正只能新增迁移文件。
 - `/api/metrics` 输出 Prometheus 文本格式，包含构建版本、运行时长、活动请求数、
   就绪/排空状态、各状态码类别请求数、请求耗时直方图，以及按全局/标识符分类

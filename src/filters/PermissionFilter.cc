@@ -1,5 +1,6 @@
 #include "PermissionFilter.h"
 #include "PermissionRegistry.h"
+#include "core/RequestContext.h"
 #include "core/Result.h"
 #include "core/Logger.h"
 
@@ -54,7 +55,9 @@ void PermissionFilter::doFilter(const drogon::HttpRequestPtr& req,
     std::string needle = "|" + *need + "|";
     if (perms.find(needle) == std::string::npos) {
         APP_LOG_WARN << "perm denied user=" << attrs->get<int64_t>("userId")
-                     << " need=" << *need << " path=" << path;
+                     << " need=" << *need
+                     << " request_id=" << core::requestId(req)
+                     << " path_template=" << core::pathTemplate(req);
         fcb(core::Result::fail(4030, "no permission: " + *need,
                                drogon::k403Forbidden));
         return;

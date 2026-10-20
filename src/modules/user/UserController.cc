@@ -214,14 +214,11 @@ drogon::AsyncTask UserController::login(
             drogon::k429TooManyRequests);
         resp->addHeader(
             "Retry-After", std::to_string(rateLimit.retryAfterSeconds));
-        const auto attrs = req->attributes();
         APP_LOG_WARN
             << "login rate limited scope="
             << (rateLimit.globalLimit ? "global" : "identifier")
-            << " request_id="
-            << (attrs && attrs->find("requestId")
-                    ? attrs->get<std::string>("requestId")
-                    : "unknown");
+            << " request_id=" << core::requestId(req)
+            << " path_template=" << core::pathTemplate(req);
         cb(resp);
         co_return;
     }

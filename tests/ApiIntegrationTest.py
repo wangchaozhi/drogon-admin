@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import socket
 import sqlite3
@@ -21,6 +22,7 @@ from typing import Any
 
 
 ALLOWED_ORIGIN = "https://admin.example.test"
+QUERY_SECRET = "diagnostic-query-secret-2026"
 
 
 def free_port() -> int:
@@ -107,7 +109,7 @@ def write_config(root: Path, port: int) -> None:
                 "log_path": "",
                 "logfile_base_name": "drogon-admin-test",
                 "log_size_limit": 1000000,
-                "log_level": "WARN",
+                "log_level": "INFO",
             },
             "run_as_daemon": False,
             "relaunch_on_error": False,
@@ -328,7 +330,7 @@ def wait_for_startup_failure(
         )
 
 
-def run_checks(base_url: str) -> None:
+def run_checks(base_url: str) -> tuple[set[str], int]:
     preflight = expect_status(
         request(
             base_url,
@@ -425,19 +427,34 @@ def run_checks(base_url: str) -> None:
     assert metrics[2].get("Cache-Control") == "no-store"
 
     not_found = expect_status(
-        request(base_url, "GET", "/api/not-found"),
+        request(
+            base_url,
+            "GET",
+            f"/api/not-found?access_token={QUERY_SECRET}",
+            headers={"X-Request-ID": "error-request-123"},
+        ),
         404,
         "API 404 security headers",
     )
     assert not_found[2].get("X-Frame-Options") == "DENY"
     assert not_found[2].get("Cache-Control") == "no-store"
+    assert not_found[2].get("X-Request-ID") == "error-request-123"
 
     invalid_login = expect_status(
-        request(base_url, "POST", "/api/auth/login", {}),
+        request(
+            base_url,
+            "POST",
+            "/api/auth/login",
+            {},
+            headers={"X-Request-ID": "short"},
+        ),
         400,
         "invalid login",
     )
     assert invalid_login[2].get("Cache-Control") == "no-store"
+    generated_request_id = invalid_login[2].get("X-Request-ID", "")
+    assert generated_request_id != "short"
+    assert re.fullmatch(r"[A-Za-z0-9._-]{8,128}", generated_request_id)
     expect_status(
         request(
             base_url,
@@ -1258,6 +1275,81 @@ def run_checks(base_url: str) -> None:
         'drogon_admin_login_rate_limited_total{scope="identifier"} 1'
         in metrics_after_throttle[1]
     )
+    return (
+        {
+            QUERY_SECRET,
+            admin_password,
+            operator_password,
+            new_operator_password,
+            self_changed_password,
+            "Disposable-Horse-2026!",
+            admin_token,
+            operator_token,
+        },
+        operator_id,
+    )
+
+
+def verify_request_diagnostics(
+    log_path: Path,
+    secrets: set[str],
+    dynamic_user_id: int,
+) -> None:
+    log = log_path.read_text(encoding="utf-8", errors="replace")
+    for secret in secrets:
+        if secret in log:
+            raise AssertionError("sensitive request value was written to logs")
+
+    decoder = json.JSONDecoder()
+    access_entries: list[dict[str, Any]] = []
+    for line in log.splitlines():
+        if '"event":"http_access"' not in line:
+            continue
+        start = line.find("{")
+        if start < 0:
+            continue
+        value, _ = decoder.raw_decode(line[start:])
+        if isinstance(value, dict):
+            access_entries.append(value)
+
+    if not access_entries:
+        raise AssertionError("structured access logs were not emitted")
+    required_fields = {
+        "event",
+        "request_id",
+        "method",
+        "path_template",
+        "status",
+        "duration_us",
+    }
+    if any(not required_fields.issubset(entry) for entry in access_entries):
+        raise AssertionError("structured access log fields are incomplete")
+
+    error_entry = next(
+        (
+            entry
+            for entry in access_entries
+            if entry.get("request_id") == "error-request-123"
+        ),
+        None,
+    )
+    if error_entry is None:
+        raise AssertionError("error access log lost its request ID")
+    assert error_entry["status"] == 404
+    assert error_entry["path_template"] == "<unmatched>"
+
+    dynamic_entries = [
+        entry
+        for entry in access_entries
+        if str(entry.get("path_template", "")).startswith("/api/users/{id:")
+    ]
+    if not dynamic_entries:
+        raise AssertionError("dynamic route template was not logged")
+    if any(
+        str(dynamic_user_id) in str(entry["path_template"])
+        for entry in dynamic_entries
+    ):
+        raise AssertionError("raw dynamic path was written to access logs")
 
 
 def main() -> int:
@@ -1296,6 +1388,8 @@ def main() -> int:
             }
         )
         log_path = root / "server.log"
+        diagnostic_secrets: set[str] = set()
+        dynamic_user_id = 0
         with log_path.open("w", encoding="utf-8") as log:
             process = subprocess.Popen(
                 [str(server)],
@@ -1307,7 +1401,7 @@ def main() -> int:
             )
             try:
                 wait_until_ready(base_url, process)
-                run_checks(base_url)
+                diagnostic_secrets, dynamic_user_id = run_checks(base_url)
                 verify_migration_state(root)
             except Exception:
                 log.flush()
@@ -1315,6 +1409,12 @@ def main() -> int:
                 raise
             finally:
                 stop_process(process)
+
+        verify_request_diagnostics(
+            log_path,
+            diagnostic_secrets,
+            dynamic_user_id,
+        )
 
         if os.name != "nt":
             shutdown_log = log_path.read_text(

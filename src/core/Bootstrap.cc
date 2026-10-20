@@ -78,20 +78,34 @@ void completeRequest(const drogon::HttpRequestPtr& req,
         static_cast<int>(resp->statusCode()), elapsedMicros);
     Lifecycle::instance().requestCompleted();
 
-    std::ostringstream details;
-    details << "request completed request_id=" << requestId
-            << " method=" << req->methodString()
-            << " path=" << req->getPath()
-            << " status=" << static_cast<int>(resp->statusCode())
-            << " duration_us=" << elapsedMicros;
+    const auto matchedPattern = req->getMatchedPathPattern();
+    Json::Value details(Json::objectValue);
+    details["event"] = "http_access";
+    details["request_id"] = requestId;
+    details["method"] = req->methodString();
+    details["path_template"] = matchedPattern.empty()
+        ? "<unmatched>"
+        : std::string(matchedPattern);
+    details["status"] = static_cast<int>(resp->statusCode());
+    details["duration_us"] = static_cast<Json::Int64>(elapsedMicros);
     if (attrs->find("userId"))
-        details << " user_id=" << attrs->get<int64_t>("userId");
+        details["user_id"] =
+            static_cast<Json::Int64>(attrs->get<int64_t>("userId"));
+
+    Json::StreamWriterBuilder writer;
+    writer["indentation"] = "";
+    const auto serialized = Json::writeString(writer, details);
+    const auto status = static_cast<int>(resp->statusCode());
     if (req->getPath() == "/api/health"
         || req->getPath() == "/api/ready"
         || req->getPath() == "/api/metrics") {
-        APP_LOG_DEBUG << details.str();
+        APP_LOG_DEBUG << serialized;
+    } else if (status >= 500) {
+        APP_LOG_ERROR << serialized;
+    } else if (status >= 400) {
+        APP_LOG_WARN << serialized;
     } else {
-        APP_LOG_INFO << details.str();
+        APP_LOG_INFO << serialized;
     }
 }
 

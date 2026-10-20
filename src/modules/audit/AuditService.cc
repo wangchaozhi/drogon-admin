@@ -1,6 +1,6 @@
 #include "AuditService.h"
 #include "core/Logger.h"
-#include <drogon/utils/Utilities.h>
+#include "core/RequestContext.h"
 
 namespace modules::audit {
 
@@ -16,16 +16,13 @@ drogon::Task<> AuditService::record(
     std::string targetId,
     Json::Value details,
     std::optional<int64_t> actorOverride) {
+    const auto requestId = core::requestId(request);
     try {
         const auto attributes = request->attributes();
         const int64_t actorUserId = actorOverride.value_or(
             attributes && attributes->find("userId")
                 ? attributes->get<int64_t>("userId")
                 : int64_t{0});
-        const std::string requestId =
-            attributes && attributes->find("requestId")
-                ? attributes->get<std::string>("requestId")
-                : drogon::utils::genRandomString(24);
 
         if (actorUserId <= 0)
             throw std::runtime_error("audit actor is unavailable");
@@ -42,12 +39,16 @@ drogon::Task<> AuditService::record(
                       << " action=" << action
                       << " target_type=" << targetType
                       << " target_id=" << targetId
+                      << " request_id=" << requestId
+                      << " path_template=" << core::pathTemplate(request)
                       << " err=" << error.what();
     } catch (...) {
         APP_LOG_ERROR << "AUDIT WRITE FAILED"
                       << " action=" << action
                       << " target_type=" << targetType
                       << " target_id=" << targetId
+                      << " request_id=" << requestId
+                      << " path_template=" << core::pathTemplate(request)
                       << " err=unknown";
     }
     co_return;
