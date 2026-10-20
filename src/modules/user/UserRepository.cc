@@ -267,6 +267,14 @@ drogon::Task<bool> UserRepository::replacePasswordHash(
     co_return result.affectedRows() == 1;
 }
 
+drogon::Task<bool> UserRepository::revokeTokens(int64_t id) {
+    auto client = db();
+    if (!client) throw std::runtime_error("db client unavailable");
+    auto result = co_await client->execSqlCoro(
+        "UPDATE users SET token_version=token_version+1 WHERE id=?", id);
+    co_return result.affectedRows() == 1;
+}
+
 drogon::Task<LoginAttemptState>
 UserRepository::recordLoginFailure(int64_t id,
                                    int maxFailures,

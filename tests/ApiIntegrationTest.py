@@ -1053,6 +1053,20 @@ def run_checks(base_url: str) -> None:
         entry["action"] == "role.delete"
         for entry in role_delete_logs["items"]
     )
+    expect_ok(
+        request(
+            base_url,
+            "POST",
+            "/api/auth/logout",
+            token=admin_token,
+        ),
+        "server-side logout",
+    )
+    expect_status(
+        request(base_url, "GET", "/api/users/me", token=admin_token),
+        401,
+        "token after server-side logout",
+    )
 
 
 def main() -> int:

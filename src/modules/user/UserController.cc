@@ -224,6 +224,31 @@ drogon::AsyncTask UserController::login(
     }
 }
 
+drogon::AsyncTask UserController::logout(
+    drogon::HttpRequestPtr req,
+    std::function<void(const drogon::HttpResponsePtr&)> cb) {
+    const auto attrs = req->attributes();
+    if (!attrs || !attrs->find("userId")) {
+        cb(core::Result::unauthorized("missing auth context"));
+        co_return;
+    }
+    const auto userId = attrs->get<int64_t>("userId");
+    try {
+        co_await svc_.revokeSessions(userId);
+        Json::Value details;
+        details["all_sessions_revoked"] = true;
+        co_await audit::AuditService::instance().record(
+            req,
+            "auth.logout",
+            "user",
+            std::to_string(userId),
+            std::move(details));
+        cb(core::Result::ok(Json::nullValue, "logged out"));
+    } catch (const std::exception& error) {
+        cb(core::internalError(req, "logout", error, 5003));
+    }
+}
+
 drogon::AsyncTask UserController::me(
     drogon::HttpRequestPtr req,
     std::function<void(const drogon::HttpResponsePtr&)> cb) {

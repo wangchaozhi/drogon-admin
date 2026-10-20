@@ -8,6 +8,7 @@ export const authApi = {
     http.post<User>('/api/auth/register', { name, email, password }),
   login: (email: string, password: string) =>
     http.post<LoginData>('/api/auth/login', { email, password }),
+  logout: () => http.post('/api/auth/logout'),
   me: () => http.get<Me>('/api/users/me'),
 }
 

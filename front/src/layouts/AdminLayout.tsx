@@ -11,6 +11,7 @@ import {
   ProfileOutlined,
 } from '@ant-design/icons'
 import { Outlet, useNavigate } from 'react-router-dom'
+import { authApi } from '../api/auth'
 import DynamicMenu from '../components/DynamicMenu'
 import { useAuth } from '../hooks/useAuth'
 import { useDevice } from '../hooks/useDevice'
@@ -21,7 +22,7 @@ const { Text } = Typography
 export default function AdminLayout() {
   const { user, menus, roles, error, logout, refresh } = useAuth()
   const { isMobile } = useDevice()
-  const { modal } = AntApp.useApp()
+  const { message, modal } = AntApp.useApp()
   const navigate = useNavigate()
   const [collapsed, setCollapsed] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -32,7 +33,20 @@ export default function AdminLayout() {
       content: '确定要退出当前账号吗？',
       okText: '退出',
       cancelText: '取消',
-      onOk: logout,
+      onOk: async () => {
+        try {
+          await authApi.logout()
+          message.success('已安全退出，现有会话已吊销')
+        } catch (logoutError) {
+          message.warning(
+            logoutError instanceof Error
+              ? `服务端注销失败：${logoutError.message}`
+              : '服务端注销失败，已清理本地会话',
+          )
+        } finally {
+          logout()
+        }
+      },
     })
   }
 

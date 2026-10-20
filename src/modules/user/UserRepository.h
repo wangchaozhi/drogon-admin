@@ -76,6 +76,7 @@ public:
         int64_t id,
         std::string expectedHash,
         std::string passwordHash);
+    drogon::Task<bool> revokeTokens(int64_t id);
 
     drogon::Task<LoginAttemptState> recordLoginFailure(
         int64_t id, int maxFailures, int lockSeconds);

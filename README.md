@@ -110,6 +110,8 @@ drogon-admin.exe
 修改密码后旧 token 立即失效，受保护请求也会实时拒绝已禁用或已删除账号。
 用户可在个人中心验证当前密码后自行设置新密码；成功后所有设备的现有 token
 都会立即失效，并要求重新登录。
+顶部“退出登录”会调用服务端注销接口递增会话版本，主动吊销该账号当前签发的
+全部 token；即使 Token 被复制到其他设备，也无法在注销后继续使用。
 邮箱登录标识会去除首尾空白并统一为小写，数据库通过 `COLLATE NOCASE`
 唯一索引阻止仅大小写不同的重复账号。
 管理员可在用户编辑页启用或禁用账号；修改邮箱、密码、状态或角色都会吊销该用户的现有 token。
@@ -185,6 +187,7 @@ npm run preview      REM 预览生产构建
 | GET    | /api/metrics                       | 否   | —            | Prometheus 运行指标     |
 | POST   | /api/auth/register                 | 否   | —            | 按注册策略创建账号      |
 | POST   | /api/auth/login                    | 否   | —            | 登录，返回 JWT          |
+| POST   | /api/auth/logout                   | 是   | —            | 安全退出并吊销 Token    |
 | GET    | /api/users/me                      | 是   | —            | 获取当前登录用户        |
 | PUT    | /api/users/me/password             | 是   | —            | 修改当前用户密码        |
 | GET    | /api/users/{id}                    | 是   | —            | 按 id 查询用户          |

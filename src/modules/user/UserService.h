@@ -73,6 +73,9 @@ public:
     // 用户修改自己的密码；成功后递增 token_version，使所有现有 token 失效。
     drogon::Task<> changePassword(int64_t id, dto::ChangePasswordReq req);
 
+    // 安全退出：吊销该账号当前签发的全部 token。
+    drogon::Task<> revokeSessions(int64_t id);
+
     UserRepository& repo() { return repo_; }
 
 private:

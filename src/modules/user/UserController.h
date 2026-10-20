@@ -19,6 +19,8 @@ public:
         ADD_METHOD_TO(UserController::login,        "/api/auth/login",    drogon::Post);
 
         // 受保护接口
+        ADD_METHOD_TO(UserController::logout,   "/api/auth/logout",     drogon::Post,
+                      "filters::AuthFilter");
         ADD_METHOD_TO(UserController::me,       "/api/users/me",        drogon::Get,
                       "filters::AuthFilter");
         ADD_METHOD_TO(UserController::changePassword,
@@ -59,6 +61,10 @@ public:
 
     drogon::AsyncTask login(drogon::HttpRequestPtr req,
                             std::function<void(const drogon::HttpResponsePtr&)> cb);
+
+    drogon::AsyncTask logout(
+        drogon::HttpRequestPtr req,
+        std::function<void(const drogon::HttpResponsePtr&)> cb);
 
     drogon::AsyncTask me(drogon::HttpRequestPtr req,
                          std::function<void(const drogon::HttpResponsePtr&)> cb);

@@ -161,4 +161,12 @@ drogon::Task<> UserService::changePassword(
     co_return;
 }
 
+drogon::Task<> UserService::revokeSessions(int64_t id) {
+    if (!co_await repo_.revokeTokens(id))
+        throw std::runtime_error("user not found while revoking sessions");
+    rbac::RbacService::instance().invalidateUser(id);
+    APP_LOG_INFO << "sessions revoked uid=" << id;
+    co_return;
+}
+
 } // namespace modules::user
