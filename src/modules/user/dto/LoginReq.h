@@ -19,12 +19,25 @@ struct LoginReq {
             err = "body must be json object";
             return std::nullopt;
         }
+        if (!j.isMember("email") || !j["email"].isString()) {
+            err = "email must be a string";
+            return std::nullopt;
+        }
+        if (!j.isMember("password") || !j["password"].isString()) {
+            err = "password must be a string";
+            return std::nullopt;
+        }
         LoginReq req;
-        req.email    = validation::normalizeEmail(
-            j.get("email", "").asString());
-        req.password = j.get("password", "").asString();
-        if (req.email.empty())    { err = "email is required";    return std::nullopt; }
-        if (req.password.empty()) { err = "password is required"; return std::nullopt; }
+        req.email    = validation::normalizeEmail(j["email"].asString());
+        req.password = j["password"].asString();
+        if (!validation::validEmail(req.email)) {
+            err = "email format is invalid";
+            return std::nullopt;
+        }
+        if (req.password.empty() || req.password.size() > 256) {
+            err = "password must be between 1 and 256 chars";
+            return std::nullopt;
+        }
         return req;
     }
 };

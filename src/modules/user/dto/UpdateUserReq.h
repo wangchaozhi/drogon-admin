@@ -21,10 +21,17 @@ struct UpdateUserReq {
             err = "body must be json object";
             return std::nullopt;
         }
+        if (!j.isMember("name") || !j["name"].isString()) {
+            err = "name must be a string";
+            return std::nullopt;
+        }
+        if (!j.isMember("email") || !j["email"].isString()) {
+            err = "email must be a string";
+            return std::nullopt;
+        }
         UpdateUserReq req;
-        req.name  = j.get("name",  "").asString();
-        req.email = validation::normalizeEmail(
-            j.get("email", "").asString());
+        req.name  = validation::trimText(j["name"].asString());
+        req.email = validation::normalizeEmail(j["email"].asString());
         if (req.name.empty()) { err = "name is required"; return std::nullopt; }
         if (req.name.size() > 100) {
             err = "name must be at most 100 chars";

@@ -4,14 +4,19 @@
 #include <cctype>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace modules::user::dto::validation {
 
-inline std::string normalizeEmail(std::string value) {
+inline std::string trimText(std::string value) {
     const auto first = value.find_first_not_of(" \t\r\n");
     if (first == std::string::npos) return {};
     const auto last = value.find_last_not_of(" \t\r\n");
-    value = value.substr(first, last - first + 1);
+    return value.substr(first, last - first + 1);
+}
+
+inline std::string normalizeEmail(std::string value) {
+    value = trimText(std::move(value));
     std::transform(
         value.begin(), value.end(), value.begin(),
         [](unsigned char character) {

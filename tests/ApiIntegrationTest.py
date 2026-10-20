@@ -336,6 +336,16 @@ def run_checks(base_url: str) -> None:
         "invalid login",
     )
     assert invalid_login[2].get("Cache-Control") == "no-store"
+    expect_status(
+        request(
+            base_url,
+            "POST",
+            "/api/auth/login",
+            {"email": 42, "password": "Wrong-Type-2026!"},
+        ),
+        400,
+        "reject non-string login fields",
+    )
     unknown_login = expect_status(
         request(
             base_url,
@@ -556,6 +566,20 @@ def run_checks(base_url: str) -> None:
     )
     operator_id = int(operator["id"])
 
+    expect_status(
+        request(
+            base_url,
+            "POST",
+            "/api/roles",
+            {
+                "code": "Invalid Role Code",
+                "name": "Invalid",
+            },
+            token=admin_token,
+        ),
+        400,
+        "reject invalid role code",
+    )
     role = expect_ok(
         request(
             base_url,
@@ -571,6 +595,17 @@ def run_checks(base_url: str) -> None:
         "create operator role",
     )
     role_id = int(role["id"])
+    expect_status(
+        request(
+            base_url,
+            "PUT",
+            f"/api/roles/{role_id}/permissions",
+            {"permission_ids": [1.5]},
+            token=admin_token,
+        ),
+        400,
+        "reject non-integer permission ids",
+    )
     permissions = expect_ok(
         request(base_url, "GET", "/api/permissions", token=admin_token),
         "list permissions",
