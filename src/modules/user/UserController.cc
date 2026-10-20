@@ -352,4 +352,30 @@ void UserController::health(const drogon::HttpRequestPtr& /*req*/,
     cb(core::Result::ok(std::move(data)));
 }
 
+drogon::AsyncTask UserController::ready(
+    drogon::HttpRequestPtr /*req*/,
+    std::function<void(const drogon::HttpResponsePtr&)> cb) {
+    try {
+        auto db = drogon::app().getDbClient();
+        if (!db) throw std::runtime_error("database client unavailable");
+        auto rows = co_await db->execSqlCoro(
+            "SELECT COUNT(*) AS migration_count FROM schema_migrations");
+        if (rows.empty())
+            throw std::runtime_error("migration state unavailable");
+
+        Json::Value data;
+        data["status"] = "ready";
+        data["database"] = "ok";
+        data["migration_count"] =
+            static_cast<Json::Int64>(
+                rows[0]["migration_count"].as<int64_t>());
+        cb(core::Result::ok(std::move(data)));
+    } catch (const std::exception& error) {
+        APP_LOG_ERROR << "readiness check failed: " << error.what();
+        cb(core::Result::fail(
+            5030, "service is not ready",
+            drogon::k503ServiceUnavailable));
+    }
+}
+
 } // namespace modules::user

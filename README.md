@@ -40,7 +40,9 @@ drogon-admin/
 │       ├── theme/              # Ant Design 主题定制
 │       └── utils/              # remember 等工具
 ├── config/config.json          # Drogon 运行配置（数据库、环境与注册策略）
-├── sql/schema.sql              # 启动时自动应用的建表脚本
+├── sql/
+│   ├── schema.sql              # 当前完整基线（新安装）
+│   └── migrations/             # 按文件名排序的版本化增量迁移
 ├── data/                       # SQLite 数据库文件目录（运行时自动创建）
 ├── build.bat / build_vs.bat    # Windows 构建脚本
 ├── CMakeLists.txt
@@ -140,6 +142,7 @@ npm run preview      REM 预览生产构建
 | Method | Path                               | 鉴权 | 权限要求     | 说明                    |
 |--------|------------------------------------|------|--------------|-------------------------|
 | GET    | /api/health                        | 否   | —            | 健康检查                |
+| GET    | /api/ready                         | 否   | —            | DB/迁移就绪检查         |
 | POST   | /api/auth/register                 | 否   | —            | 按注册策略创建账号      |
 | POST   | /api/auth/login                    | 否   | —            | 登录，返回 JWT          |
 | GET    | /api/users/me                      | 是   | —            | 获取当前登录用户        |
@@ -210,18 +213,18 @@ ADD_METHOD_TO(UserController::create, "/api/users",
   - 登录凭证错误抛 `LoginInvalidError`，由 Controller 转 401。
 - **Controller**：方法签名 `drogon::AsyncTask xxx(HttpRequestPtr req, std::function<void(const HttpResponsePtr&)> cb, ...)`。Drogon 识别协程返回类型并托管 frame 生命周期；参数按值传入 frame，安全 `co_await`。
 - **Filter**：`HttpFilter::doFilter` 为虚函数签名固定为 `void`，内部调用 **free-function 协程** `loadAndContinue(...)` 启动 `AsyncTask` 完成 RBAC 视图加载后再 `fccb()`。
-- **禁止反模式**：严禁在 `execSqlAsync` 的回调中直接调用 `execSqlSync`——SQLite 单 worker 线程会自锁卡死。本仓全链路已改造为 `co_await execSqlCoro`，仅保留 `Bootstrap::init` 里一次性的 schema 迁移使用 `execSqlSync`（运行在主线程启动阶段，不涉及 worker 竞争）。
+- **禁止反模式**：严禁在 `execSqlAsync` 的回调中直接调用 `execSqlSync`——SQLite 单 worker 线程会自锁卡死。本仓业务链路统一使用 `co_await execSqlCoro`；仅启动期版本迁移使用同步 SQL，完成后才对外提供服务。
 
 ## 日志
 
 - 双路输出：`trantor::AsyncFileLogger` 写 `logs/drogon-admin.log`（自动按大小切片）+ 自定义 `AsyncConsoleSink` 后台线程刷 `stdout`，业务线程只入队，Windows QuickEdit"选中"阻塞 stdout 时不会拖住 HTTP 线程。
-- `sql/schema.sql` 的幂等迁移（如 `ALTER TABLE ADD COLUMN` 已存在列）会被降级为 DEBUG，避免 ERROR 噪音。
+- 已应用迁移记录在 `schema_migrations`；每个迁移在 `BEGIN IMMEDIATE` 事务中执行，失败会回滚并阻止服务进入就绪状态。
 
 ## 首个注册用户自动晋升管理员
 
-- 系统里 `user_roles` 表不存在 `role_id=1` 的绑定时，下一个注册的用户自动获得 admin 角色；
-- 否则按 `config.superAdminEmail` 匹配；其他走普通 `user` 角色。
-- 相关逻辑见 [`UserService::assignDefaultRole`](src/modules/user/UserService.cc) 与 [`UserRepository::hasAnyAdmin`](src/modules/user/UserRepository.cc)。
+- 默认 `registration_mode=first-user`：仅第一个注册用户获得 admin 角色，随后关闭公开注册；
+- 判断与“创建用户 + 绑定角色”位于同一个 SQLite `Immediate` 事务，避免并发注册产生多个首管理员；
+- 如需开放注册可显式设置 `open`，后续用户只获得普通 `user` 角色。
 
 ## RBAC 权限设计
 
@@ -233,7 +236,7 @@ ADD_METHOD_TO(UserController::create, "/api/users",
 ## 数据库（SQLite）
 
 - 默认使用 SQLite，数据库文件位于 `data/drogon-admin.db`（首次启动自动创建）
-- 启动时 `core::Bootstrap` 会自动执行 `sql/schema.sql`，存在的表不会重复创建
+- 启动时先对齐 `sql/schema.sql` 基线，再按文件名执行 `sql/migrations/*.sql`；版本写入 `schema_migrations`
 - schema 内置种子数据：默认角色 `admin`（全部权限）与 `user`（仅仪表盘+个人中心）
 - `config/config.json` 中 `db_clients` 段控制连接参数；SQLite 写为单连接更稳妥：
   ```json
@@ -244,7 +247,7 @@ ADD_METHOD_TO(UserController::create, "/api/users",
       "connection_number": 1
   }]
   ```
-- 更换为 MySQL：把 `rdbms` 改成 `mysql` 并补 `host/port/user/passwd`，同时 `vcpkg.json` 改成 `drogon[mysql]` 即可，Repository 代码不用改（SQL 语法适度调整）。
+- 当前 schema、迁移和部分 Repository 查询针对 SQLite；切换 MySQL/PostgreSQL 前需提供对应 SQL 方言与迁移实现，不能只修改连接配置。
 
 ## 查看数据库
 

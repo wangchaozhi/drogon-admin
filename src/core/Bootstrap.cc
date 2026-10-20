@@ -5,28 +5,33 @@
 #include <drogon/orm/DbClient.h>
 #include <trantor/utils/AsyncFileLogger.h>
 #include <trantor/utils/Logger.h>
+#include <algorithm>
+#include <cctype>
 #include <condition_variable>
 #include <cstdio>
 #include <deque>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace core {
 
 namespace {
 
-// 读取整份 SQL 文件并按分号切分为多条语句（忽略空语句和纯注释行）
-std::vector<std::string> loadSqlStatements(const std::string& path) {
+// 读取 SQL 文件并按分号切分为多条语句（忽略空语句和纯注释行）。
+std::vector<std::string> loadSqlStatements(
+    const std::filesystem::path& path) {
     std::vector<std::string> stmts;
     std::ifstream ifs(path);
-    if (!ifs) {
-        APP_LOG_WARN << "schema file not found: " << path;
-        return stmts;
-    }
+    if (!ifs)
+        throw std::runtime_error(
+            "SQL file not found: " + path.string());
     std::stringstream ss;
     ss << ifs.rdbuf();
     std::string all = ss.str();
@@ -62,6 +67,132 @@ std::vector<std::string> loadSqlStatements(const std::string& path) {
     return stmts;
 }
 
+std::optional<std::pair<std::string, std::string>>
+alterAddColumnTarget(const std::string& statement) {
+    std::istringstream stream(statement);
+    std::string alter;
+    std::string tableKeyword;
+    std::string table;
+    std::string add;
+    std::string columnKeyword;
+    std::string column;
+    stream >> alter >> tableKeyword >> table >> add >> columnKeyword >> column;
+
+    auto lower = [](std::string value) {
+        std::transform(
+            value.begin(), value.end(), value.begin(),
+            [](unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+        return value;
+    };
+    if (lower(alter) != "alter"
+        || lower(tableKeyword) != "table"
+        || lower(add) != "add"
+        || lower(columnKeyword) != "column"
+        || table.empty()
+        || column.empty()) {
+        return std::nullopt;
+    }
+    const auto validIdentifier = [](const std::string& value) {
+        return std::all_of(
+            value.begin(), value.end(),
+            [](unsigned char c) {
+                return std::isalnum(c) || c == '_';
+            });
+    };
+    if (!validIdentifier(table) || !validIdentifier(column))
+        return std::nullopt;
+    return std::pair{std::move(table), std::move(column)};
+}
+
+bool columnExists(const drogon::orm::DbClientPtr& db,
+                  const std::string& table,
+                  const std::string& column) {
+    const auto rows = db->execSqlSync(
+        "PRAGMA table_info(" + table + ")");
+    return std::any_of(
+        rows.begin(), rows.end(),
+        [&column](const auto& row) {
+            return row["name"].template as<std::string>() == column;
+        });
+}
+
+void applySchemaAndMigrations(const drogon::orm::DbClientPtr& db) {
+    const auto schemaPath = std::filesystem::path("sql") / "schema.sql";
+    const auto schemaStatements = loadSqlStatements(schemaPath);
+    for (const auto& statement : schemaStatements)
+        db->execSqlSync(statement);
+
+    db->execSqlSync(
+        "CREATE TABLE IF NOT EXISTS schema_migrations("
+        "version TEXT PRIMARY KEY,"
+        "applied_at INTEGER NOT NULL"
+        ")");
+
+    const auto migrationsDir =
+        std::filesystem::path("sql") / "migrations";
+    if (!std::filesystem::is_directory(migrationsDir))
+        throw std::runtime_error(
+            "migrations directory not found: " + migrationsDir.string());
+
+    std::vector<std::filesystem::path> migrations;
+    for (const auto& entry :
+         std::filesystem::directory_iterator(migrationsDir)) {
+        if (entry.is_regular_file()
+            && entry.path().extension() == ".sql") {
+            migrations.push_back(entry.path());
+        }
+    }
+    std::sort(migrations.begin(), migrations.end());
+
+    size_t appliedCount = 0;
+    for (const auto& migration : migrations) {
+        const auto version = migration.stem().string();
+        auto applied = db->execSqlSync(
+            "SELECT 1 FROM schema_migrations WHERE version=?",
+            version);
+        if (!applied.empty()) continue;
+
+        db->execSqlSync("BEGIN IMMEDIATE");
+        try {
+            for (const auto& statement :
+                 loadSqlStatements(migration)) {
+                const auto alterColumn =
+                    alterAddColumnTarget(statement);
+                if (alterColumn
+                    && columnExists(
+                        db, alterColumn->first, alterColumn->second)) {
+                    APP_LOG_DEBUG
+                        << "migration column already exists version="
+                        << version << " table=" << alterColumn->first
+                        << " column=" << alterColumn->second;
+                    continue;
+                }
+                db->execSqlSync(statement);
+            }
+            db->execSqlSync(
+                "INSERT INTO schema_migrations(version,applied_at) "
+                "VALUES(?,CAST(strftime('%s','now') AS INTEGER))",
+                version);
+            db->execSqlSync("COMMIT");
+            ++appliedCount;
+            APP_LOG_INFO << "database migration applied: " << version;
+        } catch (...) {
+            try {
+                db->execSqlSync("ROLLBACK");
+            } catch (...) {
+            }
+            throw;
+        }
+    }
+
+    APP_LOG_INFO << "database schema ready, baseStatements="
+                 << schemaStatements.size()
+                 << ", migrationsApplied=" << appliedCount
+                 << ", migrationsAvailable=" << migrations.size();
+}
+
 void ensureDbDirAndSchema() {
     // 确保 data / logs / uploads 目录存在（均为配置里引用的相对路径）
     std::error_code ec;
@@ -72,28 +203,18 @@ void ensureDbDirAndSchema() {
     // 待 Drogon 启动后再执行 schema，使用 beginningAdvice 钩子
     drogon::app().registerBeginningAdvice([]() {
         auto db = drogon::app().getDbClient();
-        if (!db) {
-            APP_LOG_ERROR << "default DbClient is null, skip schema init";
-            return;
+        if (!db)
+            throw std::runtime_error("default DbClient is unavailable");
+        try {
+            applySchemaAndMigrations(db);
+        } catch (const std::exception& error) {
+            APP_LOG_ERROR << "database migration failed: " << error.what();
+            // 启动失败时异步日志线程可能来不及刷盘，stderr 保留可诊断信息。
+            std::fprintf(
+                stderr, "database migration failed: %s\n", error.what());
+            std::fflush(stderr);
+            throw;
         }
-        auto stmts = loadSqlStatements("sql/schema.sql");
-        for (const auto& s : stmts) {
-            try {
-                db->execSqlSync(s);
-            } catch (const std::exception& e) {
-                // 幂等迁移：列/表/索引已存在属于预期，无需 ERROR 噪音
-                std::string msg = e.what();
-                auto isBenign = msg.find("duplicate column name") != std::string::npos
-                             || msg.find("already exists") != std::string::npos;
-                if (isBenign) {
-                    APP_LOG_DEBUG << "schema stmt skipped (already applied): " << msg;
-                } else {
-                    APP_LOG_ERROR << "schema stmt failed: " << msg
-                                  << " | sql=" << s;
-                }
-            }
-        }
-        APP_LOG_INFO << "schema.sql applied, statements=" << stmts.size();
     });
 }
 

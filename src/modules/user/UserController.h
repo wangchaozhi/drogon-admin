@@ -38,6 +38,8 @@ public:
 
         // 健康检查（公开，不查 DB，仍为同步）
         ADD_METHOD_TO(UserController::health, "/api/health", drogon::Get);
+        // 就绪检查（公开，验证 DB 与迁移状态）
+        ADD_METHOD_TO(UserController::ready, "/api/ready", drogon::Get);
     METHOD_LIST_END
 
     drogon::AsyncTask registerUser(drogon::HttpRequestPtr req,
@@ -80,6 +82,9 @@ public:
     // 不涉及 DB，保持同步签名
     void health(const drogon::HttpRequestPtr& req,
                 std::function<void(const drogon::HttpResponsePtr&)>&& cb);
+    drogon::AsyncTask ready(
+        drogon::HttpRequestPtr req,
+        std::function<void(const drogon::HttpResponsePtr&)> cb);
 
 private:
     UserService svc_;

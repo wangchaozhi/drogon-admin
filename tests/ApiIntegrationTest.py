@@ -8,11 +8,13 @@ import json
 import os
 import shutil
 import socket
+import sqlite3
 import subprocess
 import tempfile
 import time
 import urllib.error
 import urllib.request
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -147,6 +149,56 @@ def write_config(root: Path, port: int) -> None:
     )
 
 
+def prepare_legacy_database(root: Path) -> None:
+    """Create the pre-auth-security users table to exercise migration 001."""
+    data_dir = root / "data"
+    data_dir.mkdir(parents=True)
+    with closing(
+        sqlite3.connect(data_dir / "drogon-admin.db")
+    ) as database:
+        database.execute(
+            """
+            CREATE TABLE users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL UNIQUE,
+                created_at INTEGER NOT NULL
+            )
+            """
+        )
+        database.commit()
+
+
+def verify_migration_state(root: Path) -> None:
+    with closing(
+        sqlite3.connect(root / "data" / "drogon-admin.db")
+    ) as database:
+        columns = {
+            row[1] for row in database.execute("PRAGMA table_info(users)")
+        }
+        expected = {
+            "password_hash",
+            "disabled",
+            "token_version",
+            "failed_login_count",
+            "locked_until",
+        }
+        if not expected.issubset(columns):
+            raise AssertionError(
+                f"legacy migration missing columns: {sorted(expected - columns)}"
+            )
+        versions = {
+            row[0]
+            for row in database.execute(
+                "SELECT version FROM schema_migrations"
+            )
+        }
+        if "001_user_auth_security" not in versions:
+            raise AssertionError(
+                f"migration version was not recorded: {sorted(versions)}"
+            )
+
+
 def wait_until_ready(base_url: str, process: subprocess.Popen[Any]) -> None:
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:
@@ -159,6 +211,17 @@ def wait_until_ready(base_url: str, process: subprocess.Popen[Any]) -> None:
             pass
         time.sleep(0.1)
     raise TimeoutError("server did not become ready within 20 seconds")
+
+
+def stop_process(process: subprocess.Popen[Any]) -> None:
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
 
 
 def run_checks(base_url: str) -> None:
@@ -221,6 +284,14 @@ def run_checks(base_url: str) -> None:
     )
     assert health[2].get("Access-Control-Allow-Origin") == ALLOWED_ORIGIN
     assert health[2].get("X-Content-Type-Options") == "nosniff"
+
+    ready = expect_ok(
+        request(base_url, "GET", "/api/ready"),
+        "database readiness",
+    )
+    assert ready["status"] == "ready"
+    assert ready["database"] == "ok"
+    assert int(ready["migration_count"]) >= 1
 
     not_found = expect_status(
         request(base_url, "GET", "/api/not-found"),
@@ -526,23 +597,25 @@ def run_checks(base_url: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--server", required=True)
-    parser.add_argument("--schema", required=True)
+    parser.add_argument("--sql-dir", required=True)
     args = parser.parse_args()
 
     server = Path(args.server).resolve()
-    schema = Path(args.schema).resolve()
+    sql_dir = Path(args.sql_dir).resolve()
     if not server.is_file():
         raise FileNotFoundError(f"server executable not found: {server}")
-    if not schema.is_file():
-        raise FileNotFoundError(f"schema not found: {schema}")
+    if not (sql_dir / "schema.sql").is_file():
+        raise FileNotFoundError(f"schema not found in: {sql_dir}")
+    if not (sql_dir / "migrations").is_dir():
+        raise FileNotFoundError(f"migrations not found in: {sql_dir}")
 
     with tempfile.TemporaryDirectory(prefix="drogon-admin-api-test-") as temp:
         root = Path(temp)
         port = free_port()
         base_url = f"http://127.0.0.1:{port}"
         write_config(root, port)
-        (root / "sql").mkdir(parents=True)
-        shutil.copy2(schema, root / "sql" / "schema.sql")
+        shutil.copytree(sql_dir, root / "sql")
+        prepare_legacy_database(root)
 
         env = os.environ.copy()
         env.update(
@@ -569,18 +642,50 @@ def main() -> int:
             try:
                 wait_until_ready(base_url, process)
                 run_checks(base_url)
+                verify_migration_state(root)
             except Exception:
                 log.flush()
                 print(log_path.read_text(encoding="utf-8", errors="replace"))
                 raise
             finally:
-                if process.poll() is None:
-                    process.terminate()
-                    try:
-                        process.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-                        process.wait(timeout=5)
+                stop_process(process)
+
+        # Simulate an installation that already has every column from the
+        # historical schema.sql but predates schema_migrations bookkeeping.
+        with closing(
+            sqlite3.connect(root / "data" / "drogon-admin.db")
+        ) as database:
+            database.execute("DELETE FROM schema_migrations")
+            database.commit()
+
+        upgrade_log_path = root / "upgrade-server.log"
+        with upgrade_log_path.open("w", encoding="utf-8") as upgrade_log:
+            process = subprocess.Popen(
+                [str(server)],
+                cwd=root,
+                env=env,
+                stdout=upgrade_log,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+            try:
+                wait_until_ready(base_url, process)
+                ready = expect_ok(
+                    request(base_url, "GET", "/api/ready"),
+                    "already-upgraded database readiness",
+                )
+                assert int(ready["migration_count"]) >= 1
+                verify_migration_state(root)
+            except Exception:
+                upgrade_log.flush()
+                print(
+                    upgrade_log_path.read_text(
+                        encoding="utf-8", errors="replace"
+                    )
+                )
+                raise
+            finally:
+                stop_process(process)
 
     print("API integration tests passed")
     return 0

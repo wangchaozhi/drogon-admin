@@ -80,7 +80,7 @@ if(BUILD_TESTING)
         COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_SOURCE_DIR}/tests/ApiIntegrationTest.py"
                 --server "$<TARGET_FILE:drogon-admin>"
-                --schema "${CMAKE_SOURCE_DIR}/sql/schema.sql"
+                --sql-dir "${CMAKE_SOURCE_DIR}/sql"
     )
     set_tests_properties(api-integration-test PROPERTIES
         TIMEOUT 60
