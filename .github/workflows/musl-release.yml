@@ -1,0 +1,110 @@
+name: musl-release
+
+on:
+  push:
+    tags:
+      - "v*"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "config/**"
+      - "sql/**"
+      - "CMakeLists.txt"
+      - "docker/Dockerfile.musl"
+      - ".github/workflows/musl-release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Linux musl (${{ matrix.arch }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            platform: linux/amd64
+          - arch: arm64
+            platform: linux/arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+        with:
+          platforms: amd64,arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build fully static musl artifact
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile.musl
+          platforms: ${{ matrix.platform }}
+          target: export
+          outputs: type=local,dest=out/${{ matrix.arch }}
+          cache-from: type=gha,scope=musl-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=musl-${{ matrix.arch }}
+          provenance: false
+
+      - name: Verify static executable
+        shell: bash
+        run: |
+          binary="out/${{ matrix.arch }}/drogon-admin"
+          chmod +x "$binary"
+          file "$binary"
+          file "$binary" | grep -q "statically linked"
+          if readelf -l "$binary" | grep -q "Requesting program interpreter"; then
+            echo "::error::musl artifact unexpectedly requests a dynamic loader"
+            exit 1
+          fi
+
+      - name: Smoke test health endpoint
+        shell: bash
+        run: |
+          cd "out/${{ matrix.arch }}"
+          ./drogon-admin >server.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8080/api/health >health.json; then
+              cat health.json
+              exit 0
+            fi
+            sleep 1
+          done
+          cat server.log
+          exit 1
+
+      - name: Package artifact
+        shell: bash
+        run: |
+          asset="drogon-admin-${GITHUB_REF_NAME}-linux-musl-${{ matrix.arch }}.tar.gz"
+          tar -czf "$asset" -C "out/${{ matrix.arch }}" .
+          echo "ASSET_PATH=$asset" >> "$GITHUB_ENV"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: drogon-admin-linux-musl-${{ matrix.arch }}
+          path: ${{ env.ASSET_PATH }}
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: ${{ env.ASSET_PATH }}
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}

@@ -1,0 +1,85 @@
+# syntax=docker/dockerfile:1.7
+
+ARG ALPINE_VERSION=3.24.2
+FROM alpine:${ALPINE_VERSION} AS builder
+
+ARG DROGON_VERSION=1.9.13
+ARG TRANTOR_VERSION=1.5.28
+
+RUN apk add --no-cache \
+        build-base \
+        cmake \
+        file \
+        git \
+        jsoncpp-dev \
+        jsoncpp-static \
+        linux-headers \
+        ninja \
+        openssl-dev \
+        openssl-libs-static \
+        perl \
+        sqlite-dev \
+        sqlite-static \
+        util-linux-dev \
+        util-linux-static \
+        zlib-dev \
+        zlib-static
+
+WORKDIR /tmp
+
+RUN git clone --branch "v${TRANTOR_VERSION}" --depth 1 \
+        https://github.com/an-tao/trantor.git trantor \
+    && cmake -S trantor -B trantor/build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/opt/drogon \
+        -DBUILD_C-ARES=OFF \
+        -DBUILD_DOC=OFF \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DBUILD_TESTING=OFF \
+        -DOPENSSL_USE_STATIC_LIBS=TRUE \
+        -DTRANTOR_USE_TLS=openssl \
+    && cmake --build trantor/build \
+    && cmake --install trantor/build
+
+RUN git clone --branch "v${DROGON_VERSION}" --depth 1 \
+        https://github.com/drogonframework/drogon.git drogon \
+    && cmake -S drogon -B drogon/build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/opt/drogon \
+        -DCMAKE_PREFIX_PATH=/opt/drogon \
+        -DBUILD_BROTLI=OFF \
+        -DBUILD_CTL=OFF \
+        -DBUILD_DOC=OFF \
+        -DBUILD_EXAMPLES=OFF \
+        -DBUILD_MYSQL=OFF \
+        -DBUILD_POSTGRESQL=OFF \
+        -DBUILD_REDIS=OFF \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DBUILD_SQLITE=ON \
+        -DBUILD_TESTING=OFF \
+        -DBUILD_YAML_CONFIG=OFF \
+        -DOPENSSL_USE_STATIC_LIBS=TRUE \
+        -DUSE_STATIC_LIBS_ONLY=TRUE \
+        -DUSE_SUBMODULE=OFF \
+    && cmake --build drogon/build \
+    && cmake --install drogon/build
+
+WORKDIR /workspace
+COPY . .
+
+RUN cmake -S . -B build-musl -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_EXE_LINKER_FLAGS="-static -static-libgcc -static-libstdc++" \
+        -DCMAKE_FIND_LIBRARY_SUFFIXES=".a" \
+        -DCMAKE_PREFIX_PATH=/opt/drogon \
+        -DOPENSSL_USE_STATIC_LIBS=TRUE \
+    && cmake --build build-musl \
+    && strip build-musl/drogon-admin \
+    && file build-musl/drogon-admin | tee /tmp/file-output \
+    && grep -q "statically linked" /tmp/file-output \
+    && ! readelf -l build-musl/drogon-admin | grep -q "Requesting program interpreter"
+
+FROM scratch AS export
+COPY --from=builder /workspace/build-musl/drogon-admin /drogon-admin
+COPY config /config
+COPY sql /sql
