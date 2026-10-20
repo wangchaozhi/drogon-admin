@@ -278,6 +278,7 @@ ADD_METHOD_TO(UserController::create, "/api/users",
 
 - **手动构建**：main 分支上不再自动触发构建。可在 GitHub Actions 页面点击 `Run workflow` 手动触发 `backend` / `frontend` / `musl-release` 流水线。
 - **PR 质量门**：面向 main 的 Pull Request 仍会自动执行构建以验证改动。
+- **版本治理**：仓库根目录的 `VERSION` 是唯一发布版本源，必须与 CMake、vcpkg、前端 package 及 lockfile 保持一致。CI 会阻止版本不一致或 tag 与版本不匹配的发布；本地可运行 `python scripts/verify_release_version.py --tag v0.1.1` 预检。
 - **自动发版**：推送形如 `v*`（如 `v0.1.0`、`v1.2.3-rc1`）的 tag 时，`backend` 会构建三平台 Release 产物（Windows static-md / Ubuntu 22.04 / macOS arm64），`musl-release` 会通过 Alpine 3.24 构建无动态加载器依赖的 x64 / arm64 musl 静态产物，`frontend` 会构建 `dist`，分别打包后自动上传到同名 tag 的 GitHub Release：
   - `drogon-admin-<tag>-windows-x64.zip`
   - `drogon-admin-<tag>-ubuntu22-x64.tar.gz`
@@ -285,11 +286,13 @@ ADD_METHOD_TO(UserController::create, "/api/users",
   - `drogon-admin-<tag>-linux-musl-x64.tar.gz`
   - `drogon-admin-<tag>-linux-musl-arm64.tar.gz`
   - `drogon-admin-front-<tag>.zip`
+  - 每个压缩包均附带同名 `.sha256` 校验文件，并同时保留在 workflow artifact 中。
   - 带 `-` 的 tag（如 `v1.0.0-rc1`）会被标记为 pre-release。
 
 发一次版示例：
 
 ```bat
-git tag v0.1.0
-git push origin v0.1.0
+python scripts/verify_release_version.py --tag v0.1.1
+git tag v0.1.1
+git push origin v0.1.1
 ```

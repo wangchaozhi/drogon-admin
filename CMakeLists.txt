@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(drogon-admin CXX)
+project(drogon-admin VERSION 0.1.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -74,6 +74,11 @@ if(BUILD_TESTING)
         ${ARGON2_TARGET}
     )
     add_test(NAME crypto-util-test COMMAND crypto-util-test)
+    add_test(
+        NAME release-version-test
+        COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_SOURCE_DIR}/scripts/verify_release_version.py"
+    )
 
     add_test(
         NAME api-integration-test

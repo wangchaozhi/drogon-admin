@@ -11,8 +11,12 @@ on:
     paths:
       - "src/**"
       - "tests/**"
+      - "scripts/verify_release_version.py"
+      - "VERSION"
       - "CMakeLists.txt"
       - "vcpkg.json"
+      - "front/package.json"
+      - "front/package-lock.json"
       - "triplets/**"
       - "config/**"
       - "sql/**"
@@ -48,6 +52,11 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - name: Verify release version
+        env:
+          EXPECTED_RELEASE_TAG: ${{ inputs.tag }}
+        run: python scripts/verify_release_version.py
 
       - name: Create and push tag
         run: |
@@ -118,6 +127,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Verify release version
+        env:
+          EXPECTED_RELEASE_TAG: ${{ inputs.tag }}
+        run: python scripts/verify_release_version.py
 
       - name: Export GitHub Actions cache env for vcpkg
         uses: actions/github-script@v9
@@ -252,7 +266,11 @@ jobs:
           Copy-Item "${{ matrix.cfg_path }}" "$staging/" -Recurse
           Copy-Item "${{ matrix.sql_path }}" "$staging/" -Recurse
           Compress-Archive -Path "$staging/*" -DestinationPath $asset -Force
+          $checksum = "$asset.sha256"
+          $hash = (Get-FileHash -Path $asset -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $(Split-Path -Leaf $asset)" | Set-Content -Path $checksum -Encoding ascii
           "ASSET_PATH=$asset" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "CHECKSUM_PATH=$checksum" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Package release asset (Unix)
         if: runner.os != 'Windows' && (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.tag != ''))
@@ -265,14 +283,29 @@ jobs:
           cp -R "${{ matrix.cfg_path }}" "$staging/"
           cp -R "${{ matrix.sql_path }}" "$staging/"
           tar -czf "$asset" -C "$staging" .
+          sha256sum "$asset" > "$asset.sha256"
           echo "ASSET_PATH=$asset" >> "$GITHUB_ENV"
+          echo "CHECKSUM_PATH=$asset.sha256" >> "$GITHUB_ENV"
+
+      - name: Upload packaged release artifact
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.artifact }}
+          path: |
+            ${{ env.ASSET_PATH }}
+            ${{ env.CHECKSUM_PATH }}
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Upload to GitHub Release
         if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.RELEASE_TAG }}
-          files: ${{ env.ASSET_PATH }}
+          files: |
+            ${{ env.ASSET_PATH }}
+            ${{ env.CHECKSUM_PATH }}
           fail_on_unmatched_files: true
           draft: false
           # 手动选择 auto 或 tag push 时，按 tag 名是否含 '-' 自动判断

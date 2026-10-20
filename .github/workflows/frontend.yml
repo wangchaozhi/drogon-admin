@@ -10,6 +10,10 @@ on:
     branches: [main]
     paths:
       - "front/**"
+      - "VERSION"
+      - "CMakeLists.txt"
+      - "vcpkg.json"
+      - "scripts/verify_release_version.py"
       - ".github/workflows/frontend.yml"
   # main 分支的构建全部改为手动触发；可选填写 tag 在本次运行内直接创建并发布 Release
   workflow_dispatch:
@@ -42,6 +46,11 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - name: Verify release version
+        env:
+          EXPECTED_RELEASE_TAG: ${{ inputs.tag }}
+        run: python scripts/verify_release_version.py
 
       - name: Create and push tag
         run: |
@@ -77,6 +86,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Verify release version
+        working-directory: ${{ github.workspace }}
+        env:
+          EXPECTED_RELEASE_TAG: ${{ inputs.tag }}
+        run: python scripts/verify_release_version.py
 
       - name: Setup Node.js ${{ matrix.node }}
         uses: actions/setup-node@v7
@@ -135,14 +150,29 @@ jobs:
         run: |
           asset="drogon-admin-front-${RELEASE_TAG}.zip"
           (cd front/dist && zip -r "$GITHUB_WORKSPACE/$asset" .)
+          sha256sum "$asset" > "$asset.sha256"
           echo "ASSET_PATH=$asset" >> "$GITHUB_ENV"
+          echo "CHECKSUM_PATH=$asset.sha256" >> "$GITHUB_ENV"
+
+      - name: Upload packaged release artifact
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+        uses: actions/upload-artifact@v7
+        with:
+          name: front-release
+          path: |
+            ${{ env.ASSET_PATH }}
+            ${{ env.CHECKSUM_PATH }}
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Upload to GitHub Release
         if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.RELEASE_TAG }}
-          files: ${{ env.ASSET_PATH }}
+          files: |
+            ${{ env.ASSET_PATH }}
+            ${{ env.CHECKSUM_PATH }}
           fail_on_unmatched_files: true
           draft: false
           # 手动选择 auto 或 tag push 时，按 tag 名是否含 '-' 自动判断

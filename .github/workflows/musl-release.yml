@@ -11,6 +11,11 @@ on:
       - "config/**"
       - "sql/**"
       - "CMakeLists.txt"
+      - "vcpkg.json"
+      - "front/package.json"
+      - "front/package-lock.json"
+      - "VERSION"
+      - "scripts/verify_release_version.py"
       - "docker/Dockerfile.musl"
       - ".dockerignore"
       - "compose.yml"
@@ -36,6 +41,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Verify release version
+        run: python scripts/verify_release_version.py
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -89,15 +97,20 @@ jobs:
       - name: Package artifact
         shell: bash
         run: |
-          asset="drogon-admin-${GITHUB_REF_NAME}-linux-musl-${{ matrix.arch }}.tar.gz"
+          release_version="v$(cat VERSION)"
+          asset="drogon-admin-${release_version}-linux-musl-${{ matrix.arch }}.tar.gz"
           tar -czf "$asset" -C "out/${{ matrix.arch }}" .
+          sha256sum "$asset" > "$asset.sha256"
           echo "ASSET_PATH=$asset" >> "$GITHUB_ENV"
+          echo "CHECKSUM_PATH=$asset.sha256" >> "$GITHUB_ENV"
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v7
         with:
           name: drogon-admin-linux-musl-${{ matrix.arch }}
-          path: ${{ env.ASSET_PATH }}
+          path: |
+            ${{ env.ASSET_PATH }}
+            ${{ env.CHECKSUM_PATH }}
           if-no-files-found: error
           retention-days: 7
 
@@ -106,7 +119,9 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
-          files: ${{ env.ASSET_PATH }}
+          files: |
+            ${{ env.ASSET_PATH }}
+            ${{ env.CHECKSUM_PATH }}
           fail_on_unmatched_files: true
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
