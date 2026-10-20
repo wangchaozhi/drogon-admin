@@ -18,10 +18,7 @@ public:
         std::string requestId,
         Json::Value details);
 
-    drogon::Task<dto::AuditLogPage> listPaged(
-        int page,
-        int pageSize,
-        std::string action);
+    drogon::Task<dto::AuditLogPage> listPaged(dto::AuditLogQuery query);
 
 private:
     drogon::orm::DbClientPtr db() const;

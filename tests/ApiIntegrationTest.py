@@ -1254,6 +1254,40 @@ def run_checks(base_url: str) -> tuple[set[str], int]:
         entry["action"] == "role.delete"
         for entry in role_delete_logs["items"]
     )
+    exact_audit_logs = expect_ok(
+        request(
+            base_url,
+            "GET",
+            "/api/audit-logs?action=user.create"
+            f"&actor_user_id={admin_id}"
+            f"&target_type=user&target_id={operator_id}"
+            "&request_id=audit-create-operator-123",
+            token=admin_token,
+        ),
+        "filter audit logs by actor, target and request id",
+    )
+    assert int(exact_audit_logs["total"]) == 1
+    assert exact_audit_logs["items"][0]["id"] == operator_create["id"]
+    expect_status(
+        request(
+            base_url,
+            "GET",
+            "/api/audit-logs?actor_user_id=not-an-integer",
+            token=admin_token,
+        ),
+        400,
+        "reject malformed audit actor filter",
+    )
+    expect_status(
+        request(
+            base_url,
+            "GET",
+            "/api/audit-logs?request_id=short",
+            token=admin_token,
+        ),
+        400,
+        "reject malformed audit request id filter",
+    )
     expect_ok(
         request(
             base_url,

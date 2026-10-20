@@ -6,7 +6,7 @@ describe('audit API', () => {
     vi.unstubAllGlobals()
   })
 
-  it('sends pagination and an exact action filter', async () => {
+  it('sends pagination and exact audit filters', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -19,15 +19,22 @@ describe('audit API', () => {
     )
     vi.stubGlobal('fetch', fetchMock)
 
-    await auditApi.list(2, 50, 'role.assign_permissions')
+    await auditApi.list(2, 50, {
+      action: 'role.assign_permissions',
+      actor_user_id: 7,
+      target_type: 'role',
+      target_id: '3',
+      request_id: 'request-123',
+    })
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/audit-logs?page=2&page_size=50&action=role.assign_permissions',
+      '/api/audit-logs?page=2&page_size=50&action=role.assign_permissions'
+        + '&actor_user_id=7&target_type=role&target_id=3&request_id=request-123',
       expect.objectContaining({ method: 'GET' }),
     )
   })
 
-  it('omits an empty action filter', async () => {
+  it('omits empty filters', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({

@@ -5,6 +5,7 @@
 #include "filters/PermissionRegistry.h"
 #include <algorithm>
 #include <cctype>
+#include <limits>
 #include <stdexcept>
 
 namespace modules::audit {
@@ -25,6 +26,26 @@ bool validAction(const std::string& action) {
             });
 }
 
+bool validIdentifier(
+    const std::string& value,
+    size_t maxLength,
+    size_t minLength = 0) {
+    if (value.empty()) return true;
+    return value.size() >= minLength
+        && value.size() <= maxLength
+        && std::all_of(
+            value.begin(),
+            value.end(),
+            [](unsigned char character) {
+                return std::isalnum(character)
+                    || character == '.'
+                    || character == '_'
+                    || character == '-'
+                    || character == ':'
+                    || character == '@';
+            });
+}
+
 } // namespace
 
 AuditController::AuditController() {
@@ -35,13 +56,11 @@ AuditController::AuditController() {
 drogon::AsyncTask AuditController::list(
     drogon::HttpRequestPtr request,
     std::function<void(const drogon::HttpResponsePtr&)> callback) {
-    int page = 1;
-    int pageSize = 20;
-    std::string action;
+    dto::AuditLogQuery query;
     try {
-        const auto parseInteger = [](const std::string& value) {
+        const auto parseInteger = [](const std::string& value) -> int64_t {
             size_t parsed = 0;
-            const int result = std::stoi(value, &parsed);
+            const auto result = std::stoll(value, &parsed);
             if (parsed != value.size())
                 throw std::invalid_argument("trailing characters");
             return result;
@@ -49,27 +68,57 @@ drogon::AsyncTask AuditController::list(
         const auto& parameters = request->getParameters();
         if (const auto it = parameters.find("page");
             it != parameters.end()) {
-            page = parseInteger(it->second);
+            const auto value = parseInteger(it->second);
+            if (value < std::numeric_limits<int>::min()
+                || value > std::numeric_limits<int>::max()) {
+                throw std::out_of_range("page");
+            }
+            query.page = static_cast<int>(value);
         }
         if (const auto it = parameters.find("page_size");
             it != parameters.end()) {
-            pageSize = parseInteger(it->second);
+            const auto value = parseInteger(it->second);
+            if (value < std::numeric_limits<int>::min()
+                || value > std::numeric_limits<int>::max()) {
+                throw std::out_of_range("page_size");
+            }
+            query.pageSize = static_cast<int>(value);
         }
         if (const auto it = parameters.find("action");
             it != parameters.end()) {
-            action = it->second;
+            query.action = it->second;
+        }
+        if (const auto it = parameters.find("actor_user_id");
+            it != parameters.end()) {
+            query.actorUserId = parseInteger(it->second);
+        }
+        if (const auto it = parameters.find("target_type");
+            it != parameters.end()) {
+            query.targetType = it->second;
+        }
+        if (const auto it = parameters.find("target_id");
+            it != parameters.end()) {
+            query.targetId = it->second;
+        }
+        if (const auto it = parameters.find("request_id");
+            it != parameters.end()) {
+            query.requestId = it->second;
         }
     } catch (const std::exception&) {
         callback(core::Result::fail(
             4002,
-            "page and page_size must be integers",
+            "pagination and actor_user_id must be integers",
             drogon::k400BadRequest));
         co_return;
     }
 
-    if (page < 1 || page > 1000000
-        || pageSize < 1 || pageSize > 200
-        || !validAction(action)) {
+    if (query.page < 1 || query.page > 1000000
+        || query.pageSize < 1 || query.pageSize > 200
+        || query.actorUserId < 0
+        || !validAction(query.action)
+        || !validIdentifier(query.targetType, 32)
+        || !validIdentifier(query.targetId, 128)
+        || !validIdentifier(query.requestId, 128, 8)) {
         callback(core::Result::fail(
             4002,
             "invalid audit log query",
@@ -80,15 +129,15 @@ drogon::AsyncTask AuditController::list(
     try {
         const auto result =
             co_await AuditService::instance().repo().listPaged(
-                page, pageSize, std::move(action));
+                query);
         Json::Value items(Json::arrayValue);
         for (const auto& item : result.items)
             items.append(item.toJson());
         Json::Value data;
         data["items"] = std::move(items);
         data["total"] = static_cast<Json::Int64>(result.total);
-        data["page"] = page;
-        data["page_size"] = pageSize;
+        data["page"] = query.page;
+        data["page_size"] = query.pageSize;
         callback(core::Result::ok(std::move(data)));
     } catch (const std::exception& error) {
         callback(core::internalError(

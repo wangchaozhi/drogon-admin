@@ -37,4 +37,14 @@ struct AuditLogPage {
     int64_t total{0};
 };
 
+struct AuditLogQuery {
+    int page{1};
+    int pageSize{20};
+    std::string action;
+    int64_t actorUserId{0};
+    std::string targetType;
+    std::string targetId;
+    std::string requestId;
+};
+
 } // namespace modules::audit::dto

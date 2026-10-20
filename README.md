@@ -358,7 +358,8 @@ ADD_METHOD_TO(UserController::create, "/api/users",
   敏感信息及高基数指标；生产环境应继续通过 Compose 的 localhost 绑定或
   反向代理访问控制将其限制在监控网络。
 - 审计查询由 `audit:view` 保护，默认仅 `admin` 拥有；普通 `user` 不会获得
-  审计菜单或权限。支持 `page`、`page_size` 与精确 `action` 查询参数。
+  审计菜单或权限。支持 `page`、`page_size`，以及 `action`、
+  `actor_user_id`、`target_type`、`target_id`、`request_id` 精确筛选。
 
 ## 首个注册用户自动晋升管理员
 

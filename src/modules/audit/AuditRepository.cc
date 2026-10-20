@@ -65,37 +65,37 @@ drogon::Task<> AuditRepository::insert(
 }
 
 drogon::Task<dto::AuditLogPage> AuditRepository::listPaged(
-    int page,
-    int pageSize,
-    std::string action) {
+    dto::AuditLogQuery query) {
     dto::AuditLogPage result;
     const int64_t offset =
-        static_cast<int64_t>(page - 1) * pageSize;
+        static_cast<int64_t>(query.page - 1) * query.pageSize;
 
-    drogon::orm::Result count;
-    drogon::orm::Result rows;
-    if (action.empty()) {
-        count = co_await db()->execSqlCoro(
-            "SELECT COUNT(*) AS c FROM audit_logs");
-        rows = co_await db()->execSqlCoro(
+    constexpr auto where =
+        " WHERE action=COALESCE(NULLIF(?,''),action)"
+        " AND actor_user_id=COALESCE(NULLIF(?,0),actor_user_id)"
+        " AND target_type=COALESCE(NULLIF(?,''),target_type)"
+        " AND target_id=COALESCE(NULLIF(?,''),target_id)"
+        " AND request_id=COALESCE(NULLIF(?,''),request_id)";
+    const auto count = co_await db()->execSqlCoro(
+        std::string("SELECT COUNT(*) AS c FROM audit_logs") + where,
+        query.action,
+        query.actorUserId,
+        query.targetType,
+        query.targetId,
+        query.requestId);
+    const auto rows = co_await db()->execSqlCoro(
+        std::string(
             "SELECT id,actor_user_id,action,target_type,target_id,"
-            "request_id,details,created_at "
-            "FROM audit_logs ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
-            pageSize,
-            offset);
-    } else {
-        count = co_await db()->execSqlCoro(
-            "SELECT COUNT(*) AS c FROM audit_logs WHERE action=?",
-            action);
-        rows = co_await db()->execSqlCoro(
-            "SELECT id,actor_user_id,action,target_type,target_id,"
-            "request_id,details,created_at "
-            "FROM audit_logs WHERE action=? "
-            "ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
-            action,
-            pageSize,
-            offset);
-    }
+            "request_id,details,created_at FROM audit_logs")
+            + where
+            + " ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
+        query.action,
+        query.actorUserId,
+        query.targetType,
+        query.targetId,
+        query.requestId,
+        query.pageSize,
+        offset);
 
     result.total = count.empty() ? 0 : count[0]["c"].as<int64_t>();
     result.items.reserve(rows.size());
