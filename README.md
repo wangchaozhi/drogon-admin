@@ -54,6 +54,7 @@ drogon-admin/
 2. CMake 3.20+
 3. [vcpkg](https://github.com/microsoft/vcpkg)，并设置环境变量 `VCPKG_ROOT`
 4. Drogon 已启用 `sqlite3` feature，依赖：`drogon[sqlite3]` / `argon2` / `jsoncpp` / `openssl` / `zlib` / `sqlite3`（vcpkg.json 已声明，首次构建会自动触发）
+5. Python 3.10+（运行跨平台 API 集成测试；仅构建可设置 `-DBUILD_TESTING=OFF`）
 
 ### 前端
 1. Node.js 26+
@@ -155,6 +156,14 @@ npm run preview      REM 预览生产构建
 | GET    | /api/permissions                   | 是   | —            | 权限列表                |
 
 测试：
+
+```bash
+ctest --test-dir build -C Release --output-on-failure
+```
+
+CTest 会启动临时 Drogon 实例和独立 SQLite 数据库，黑盒验证注册/登录、密码与角色变更后的 token 吊销、登录锁定、最后管理员保护、内置角色保护以及 CORS/安全响应头。测试不会读写开发数据库。
+
+手工调用示例：
 
 ```bash
 curl http://127.0.0.1:8080/api/health

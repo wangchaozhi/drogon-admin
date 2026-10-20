@@ -64,6 +64,8 @@ add_custom_command(TARGET drogon-admin POST_BUILD
 
 include(CTest)
 if(BUILD_TESTING)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
     add_executable(crypto-util-test tests/CryptoUtilTest.cc)
     target_include_directories(crypto-util-test PRIVATE src)
     target_link_libraries(crypto-util-test PRIVATE
@@ -72,4 +74,16 @@ if(BUILD_TESTING)
         ${ARGON2_TARGET}
     )
     add_test(NAME crypto-util-test COMMAND crypto-util-test)
+
+    add_test(
+        NAME api-integration-test
+        COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_SOURCE_DIR}/tests/ApiIntegrationTest.py"
+                --server "$<TARGET_FILE:drogon-admin>"
+                --schema "${CMAKE_SOURCE_DIR}/sql/schema.sql"
+    )
+    set_tests_properties(api-integration-test PROPERTIES
+        TIMEOUT 60
+        LABELS "integration"
+    )
 endif()
