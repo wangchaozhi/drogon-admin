@@ -83,6 +83,11 @@ if(BUILD_TESTING)
         COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_SOURCE_DIR}/scripts/verify_release_version.py"
     )
+    add_test(
+        NAME release-workflow-test
+        COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_SOURCE_DIR}/scripts/verify_release_workflows.py"
+    )
 
     add_test(
         NAME api-integration-test

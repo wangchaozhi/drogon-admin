@@ -11,7 +11,7 @@ on:
     paths:
       - "src/**"
       - "tests/**"
-      - "scripts/verify_release_version.py"
+      - "scripts/**"
       - "VERSION"
       - "CMakeLists.txt"
       - "vcpkg.json"
@@ -20,67 +20,16 @@ on:
       - "triplets/**"
       - "config/**"
       - "sql/**"
-      - ".github/workflows/backend.yml"
-  # main 分支的构建全部改为手动触发；可选填写 tag 在本次运行内直接创建并发布 Release
+      - ".github/workflows/**"
+  # 手动触发仅构建；正式发版由 release workflow 统一创建 tag 并调度。
   workflow_dispatch:
-    inputs:
-      tag:
-        description: "要创建并发布的 tag（留空则只构建不发版，例如 v0.1.0）"
-        required: false
-        default: ""
-      prerelease:
-        description: "是否标记为 pre-release（auto 按 tag 中是否含 `-` 自动判断）"
-        required: false
-        default: "auto"
-        type: choice
-        options:
-          - "auto"
-          - "true"
-          - "false"
 
-# tag 触发 / dispatch 建 tag 均需要写仓库内容以创建 Release 并上传资产
+# tag 构建需要写仓库内容以创建 Release 并上传资产
 permissions:
   contents: write
 
 jobs:
-  # ---------- 手动触发且填写了 tag 时，先在仓库上创建并推送该 tag ----------
-  prepare:
-    name: Create tag (manual dispatch)
-    if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Verify release version
-        env:
-          EXPECTED_RELEASE_TAG: ${{ inputs.tag }}
-        run: python scripts/verify_release_version.py
-
-      - name: Create and push tag
-        run: |
-          TAG='${{ inputs.tag }}'
-          if ! [[ "$TAG" =~ ^v ]]; then
-            echo "::error::tag 必须以 v 开头，例如 v0.1.0，当前输入: $TAG"
-            exit 1
-          fi
-          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-            echo "::error::tag $TAG 已存在，请改用新的版本号"
-            exit 1
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag "$TAG"
-          git push origin "$TAG"
-          echo "::notice::已创建并推送 tag $TAG"
-
   build:
-    # 手动填了 tag 时，需要等 prepare 推送完 tag 再进入 checkout（这样 checkout 的是 tag 指向的 commit）；
-    # 其他触发事件下 prepare 被 skip，build 仍然照常执行。
-    needs: [prepare]
-    if: |
-      always() && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped')
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     # 允许 matrix 中标记为 experimental 的 job 失败而不影响整条流水线（主要用于 arm64-osx，
@@ -129,8 +78,6 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Verify release version
-        env:
-          EXPECTED_RELEASE_TAG: ${{ inputs.tag }}
         run: python scripts/verify_release_version.py
 
       - name: Export GitHub Actions cache env for vcpkg
@@ -236,19 +183,12 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      # ---------- 以下仅在 "发布场景" 时执行：
-      #   a) push 了一个 v* tag（tag 触发）
-      #   b) workflow_dispatch 且填写了 inputs.tag（已由 prepare job 创建并推送 tag）
-      # 统一用 env.RELEASE_TAG 作为真实的 tag 名
+      # ---------- 以下仅在 tag 上运行时发布 ----------
       - name: Resolve release tag
-        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+        if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.tag }}" ]]; then
-            TAG='${{ inputs.tag }}'
-          else
-            TAG='${{ github.ref_name }}'
-          fi
+          TAG='${{ github.ref_name }}'
           if [[ -z "$TAG" ]]; then
             echo "::error::无法解析 Release tag"
             exit 1
@@ -256,7 +196,7 @@ jobs:
           echo "RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
 
       - name: Package release asset (Windows)
-        if: runner.os == 'Windows' && (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.tag != ''))
+        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         run: |
           $asset = "drogon-admin-$env:RELEASE_TAG-${{ matrix.asset_suffix }}"
@@ -273,7 +213,7 @@ jobs:
           "CHECKSUM_PATH=$checksum" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Package release asset (Unix)
-        if: runner.os != 'Windows' && (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.tag != ''))
+        if: runner.os != 'Windows' && startsWith(github.ref, 'refs/tags/')
         shell: bash
         run: |
           asset="drogon-admin-${RELEASE_TAG}-${{ matrix.asset_suffix }}"
@@ -288,7 +228,7 @@ jobs:
           echo "CHECKSUM_PATH=$asset.sha256" >> "$GITHUB_ENV"
 
       - name: Upload packaged release artifact
-        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+        if: startsWith(github.ref, 'refs/tags/')
         uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.artifact }}
@@ -299,7 +239,7 @@ jobs:
           retention-days: 7
 
       - name: Upload to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.RELEASE_TAG }}
@@ -308,5 +248,4 @@ jobs:
             ${{ env.CHECKSUM_PATH }}
           fail_on_unmatched_files: true
           draft: false
-          # 手动选择 auto 或 tag push 时，按 tag 名是否含 '-' 自动判断
-          prerelease: ${{ inputs.prerelease == 'true' || ((github.event_name != 'workflow_dispatch' || inputs.prerelease == 'auto') && contains(env.RELEASE_TAG, '-')) }}
+          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
