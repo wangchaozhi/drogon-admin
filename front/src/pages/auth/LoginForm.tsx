@@ -1,4 +1,4 @@
-// 登录表单：受控于父组件传入的 onSubmit；支持"记住密码"。
+// 登录表单：受控于父组件传入的 onSubmit；“记住我”只保存邮箱。
 import { Button, Checkbox, Form, Input } from 'antd'
 import { LockOutlined, MailOutlined } from '@ant-design/icons'
 import { useState } from 'react'
@@ -18,11 +18,14 @@ type Props = {
 export default function LoginForm({ onSubmit, initialEmail = '' }: Props) {
   const [loading, setLoading] = useState(false)
 
-  // 初始值：优先用 remember 里的凭证，否则使用 initialEmail
+  // 初始值：优先使用刚注册的邮箱，其次使用本地记住的邮箱。
   const saved = remember.load()
-  const initialValues: LoginValues = saved
-    ? { email: saved.email, password: saved.password, remember: true }
-    : { email: initialEmail, password: '', remember: false }
+  const rememberedEmail = initialEmail || saved?.email || ''
+  const initialValues: LoginValues = {
+    email: rememberedEmail,
+    password: '',
+    remember: !!saved && !initialEmail,
+  }
 
   return (
     <Form<LoginValues>
@@ -40,7 +43,7 @@ export default function LoginForm({ onSubmit, initialEmail = '' }: Props) {
           await onSubmit(payload)
           // 登录成功后根据勾选更新本地凭证
           if (payload.remember) {
-            remember.save({ email: payload.email, password: payload.password })
+            remember.save({ email: payload.email })
           } else {
             remember.clear()
           }
@@ -69,7 +72,7 @@ export default function LoginForm({ onSubmit, initialEmail = '' }: Props) {
       </Form.Item>
 
       <Form.Item name="remember" valuePropName="checked" style={{ marginBottom: 12 }}>
-        <Checkbox>记住密码</Checkbox>
+        <Checkbox>记住邮箱</Checkbox>
       </Form.Item>
 
       <Form.Item style={{ marginBottom: 0 }}>

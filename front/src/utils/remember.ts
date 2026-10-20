@@ -1,12 +1,10 @@
-// "记住密码"本地存储工具：勾选时保存邮箱+密码，下次自动填充。
-// 注意：密码明文存 localStorage 仅为用户体验，存在 XSS 风险，生产环境建议改为仅记住邮箱。
-// 这里用 base64 做最基本的肉眼不可读处理（非加密）。
+// “记住我”仅保存邮箱。密码和 token 之外的凭据绝不写入持久存储。
+// load 兼容旧 {e,p} 数据，但只读取邮箱；下一次 save 会移除旧密码字段。
 
 const KEY = 'drogon_admin_remembered_credential'
 
 export type RememberedCredential = {
   email: string
-  password: string
 }
 
 function encode(s: string): string {
@@ -20,7 +18,7 @@ export const remember = {
   save(cred: RememberedCredential) {
     localStorage.setItem(
       KEY,
-      JSON.stringify({ e: encode(cred.email), p: encode(cred.password) }),
+      JSON.stringify({ e: encode(cred.email) }),
     )
   },
   load(): RememberedCredential | null {
@@ -28,8 +26,12 @@ export const remember = {
     if (!raw) return null
     try {
       const o = JSON.parse(raw) as { e?: string; p?: string }
-      if (!o.e || !o.p) return null
-      return { email: decode(o.e), password: decode(o.p) }
+      if (!o.e) return null
+      if (o.p) {
+        // 发现旧版本保存的密码时立即原地迁移并删除该字段。
+        localStorage.setItem(KEY, JSON.stringify({ e: o.e }))
+      }
+      return { email: decode(o.e) }
     } catch {
       return null
     }

@@ -61,7 +61,7 @@ export default function RegisterForm({ onSubmit }: Props) {
           { min: 12, max: 256, message: '密码长度需为 12–256 位' },
         ]}
       >
-        <Input.Password prefix={<LockOutlined />} placeholder="至少 6 位" size="large" />
+        <Input.Password prefix={<LockOutlined />} placeholder="至少 12 位" size="large" />
       </Form.Item>
       <Form.Item>
         <Button type="primary" htmlType="submit" loading={loading} block size="large">

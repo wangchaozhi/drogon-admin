@@ -1,6 +1,6 @@
 // 受保护路由：未登录跳 /login；可选按权限/角色拦截（否则 403）。
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
-import { Spin } from 'antd'
+import { Button, Result, Spin } from 'antd'
 import { useAuth } from '../hooks/useAuth'
 
 type Props = {
@@ -9,14 +9,37 @@ type Props = {
 }
 
 export default function ProtectedRoute({ perm, role }: Props) {
-  const { user, loading, hasPerm, hasRole } = useAuth()
+  const { user, loading, error, refresh, hasPerm, hasRole } = useAuth()
   const location = useLocation()
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div
+        role="status"
+        aria-label="正在恢复登录状态"
+        style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
         <Spin size="large" />
       </div>
+    )
+  }
+
+  if (!user && error) {
+    return (
+      <Result
+        status="warning"
+        title="暂时无法恢复登录状态"
+        subTitle={error}
+        extra={
+          <Button
+            type="primary"
+            aria-label="重试恢复登录状态"
+            onClick={() => void refresh().catch(() => {})}
+          >
+            重试
+          </Button>
+        }
+      />
     )
   }
 

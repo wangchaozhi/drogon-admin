@@ -1,14 +1,14 @@
 // 登录/注册页：半屏渐变 hero + 右侧卡片。
 // 登录成功后根据 location.state.from 回跳，默认去 /dashboard。
 import { useState } from 'react'
-import { App as AntApp, Card, Divider, Typography } from 'antd'
+import { App as AntApp, Button, Card, Divider, Typography } from 'antd'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import LoginForm, { type LoginValues } from './LoginForm'
 import RegisterForm, { type RegisterValues } from './RegisterForm'
 import { authApi } from '../../api/auth'
 import { useAuth } from '../../hooks/useAuth'
 
-const { Title, Paragraph, Link, Text } = Typography
+const { Title, Paragraph, Text } = Typography
 
 type Mode = 'login' | 'register'
 
@@ -45,6 +45,7 @@ export default function LoginPage() {
       setMode('login')
     } catch (e) {
       message.error(e instanceof Error ? e.message : String(e))
+      throw e
     }
   }
 
@@ -53,7 +54,7 @@ export default function LoginPage() {
       <div className="login-hero">
         <div className="login-hero-inner">
           <div className="login-logo">
-            <span className="login-logo-dot" />
+            <span className="login-logo-dot" aria-hidden="true" />
             <span className="login-logo-text">drogon-admin</span>
           </div>
           <Title level={1} className="login-hero-title">
@@ -90,12 +91,16 @@ export default function LoginPage() {
             {mode === 'login' ? (
               <Text type="secondary">
                 还没有账号？{' '}
-                <Link onClick={(e) => { e.preventDefault(); setMode('register') }}>立即注册</Link>
+                <Button type="link" onClick={() => setMode('register')} style={{ padding: 0 }}>
+                  立即注册
+                </Button>
               </Text>
             ) : (
               <Text type="secondary">
                 已有账号？{' '}
-                <Link onClick={(e) => { e.preventDefault(); setMode('login') }}>去登录</Link>
+                <Button type="link" onClick={() => setMode('login')} style={{ padding: 0 }}>
+                  去登录
+                </Button>
               </Text>
             )}
           </div>

@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { AuthContext, type AuthValue } from '../context/AuthContext'
@@ -20,6 +21,7 @@ function authValue(overrides: Partial<AuthValue> = {}): AuthValue {
     permissions: [],
     menus: [],
     loading: false,
+    error: null,
     login: vi.fn() as unknown as AuthValue['login'],
     logout: vi.fn(),
     refresh: vi.fn() as unknown as AuthValue['refresh'],
@@ -63,6 +65,20 @@ describe('ProtectedRoute', () => {
       { perm: 'user:view' },
     )
     expect(screen.getByText('Forbidden target')).toBeVisible()
+  })
+
+  it('offers a retry instead of logging out on a transient restore error', async () => {
+    const refresh = vi.fn().mockResolvedValue(undefined)
+    renderRoute(authValue({
+      user: null,
+      roles: [],
+      error: 'network unavailable',
+      refresh,
+    }))
+
+    expect(screen.getByText('暂时无法恢复登录状态')).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: '重试恢复登录状态' }))
+    expect(refresh).toHaveBeenCalledOnce()
   })
 
   it('renders the nested route when permission and role checks pass', () => {

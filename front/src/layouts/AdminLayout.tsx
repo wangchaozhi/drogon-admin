@@ -1,7 +1,7 @@
 // 后台布局：左侧 Sider（动态菜单）+ 顶部 Header（用户菜单）+ 右侧 Content。
 // 手机端 Sider 折叠为 Drawer。
 import { useState } from 'react'
-import { App as AntApp, Avatar, Button, Drawer, Dropdown, Layout, Space, Typography } from 'antd'
+import { Alert, App as AntApp, Avatar, Button, Drawer, Dropdown, Layout, Space, Typography } from 'antd'
 import {
   LogoutOutlined,
   MenuFoldOutlined,
@@ -19,7 +19,7 @@ const { Header, Sider, Content } = Layout
 const { Text } = Typography
 
 export default function AdminLayout() {
-  const { user, menus, roles, logout } = useAuth()
+  const { user, menus, roles, error, logout, refresh } = useAuth()
   const { isMobile } = useDevice()
   const { modal } = AntApp.useApp()
   const navigate = useNavigate()
@@ -42,9 +42,9 @@ export default function AdminLayout() {
         <span className="admin-brand-dot" />
         {!collapsed && <span className="admin-brand-text">drogon-admin</span>}
       </div>
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      <nav aria-label="主导航" style={{ flex: 1, overflowY: 'auto' }}>
         <DynamicMenu menus={menus} mode="inline" theme="dark" inlineCollapsed={!isMobile && collapsed} />
-      </div>
+      </nav>
     </div>
   )
 
@@ -69,8 +69,8 @@ export default function AdminLayout() {
           onClose={() => setDrawerOpen(false)}
           placement="left"
           width={240}
-          closable={false}
-          styles={{ body: { padding: 0, background: '#001529' }, header: { display: 'none' } }}
+          title="导航菜单"
+          styles={{ body: { padding: 0, background: '#001529' } }}
         >
           {sider}
         </Drawer>
@@ -84,6 +84,8 @@ export default function AdminLayout() {
                 ? <MobileMenuOutlined />
                 : collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />
             }
+            aria-label={isMobile ? '打开导航菜单' : collapsed ? '展开导航菜单' : '收起导航菜单'}
+            aria-expanded={isMobile ? drawerOpen : !collapsed}
             onClick={() => (isMobile ? setDrawerOpen(true) : setCollapsed(!collapsed))}
           />
           <div style={{ flex: 1 }} />
@@ -100,22 +102,39 @@ export default function AdminLayout() {
               },
             }}
           >
-            <Space style={{ cursor: 'pointer', padding: '0 8px' }}>
-              <Avatar size={isMobile ? 'small' : 'default'} icon={<UserOutlined />} />
-              {!isMobile && (
-                <span>
-                  <Text strong>{user?.name}</Text>
-                  {roles.length > 0 && (
-                    <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-                      {roles.join(' / ')}
-                    </Text>
-                  )}
-                </span>
-              )}
-            </Space>
+            <Button type="text" aria-label="打开用户菜单" style={{ height: 'auto', padding: '4px 8px' }}>
+              <Space>
+                <Avatar size={isMobile ? 'small' : 'default'} icon={<UserOutlined />} />
+                {!isMobile && (
+                  <span>
+                    <Text strong>{user?.name}</Text>
+                    {roles.length > 0 && (
+                      <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                        {roles.join(' / ')}
+                      </Text>
+                    )}
+                  </span>
+                )}
+              </Space>
+            </Button>
           </Dropdown>
         </Header>
         <Content className="admin-content">
+          {error && (
+            <Alert
+              type="warning"
+              showIcon
+              closable
+              message="权限状态刷新失败"
+              description={error}
+              action={
+                <Button size="small" onClick={() => void refresh().catch(() => {})}>
+                  重试
+                </Button>
+              }
+              style={{ marginBottom: 12 }}
+            />
+          )}
           <Outlet />
         </Content>
       </Layout>

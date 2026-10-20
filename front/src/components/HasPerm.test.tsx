@@ -10,6 +10,7 @@ function authValue(hasPermission: boolean): AuthValue {
     permissions: [],
     menus: [],
     loading: false,
+    error: null,
     login: vi.fn(),
     logout: vi.fn(),
     refresh: vi.fn(),

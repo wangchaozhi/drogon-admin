@@ -32,6 +32,7 @@ export default function AppHeader({ user, onLogout }: Props) {
         <Button
           icon={<LogoutOutlined />}
           size={isMobile ? 'small' : 'middle'}
+          aria-label="退出登录"
           onClick={onLogout}
         >
           {isMobile ? '' : '退出登录'}
