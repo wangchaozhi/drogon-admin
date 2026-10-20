@@ -23,6 +23,7 @@ import {
   SafetyOutlined,
   SearchOutlined,
   StopOutlined,
+  UnlockOutlined,
 } from '@ant-design/icons'
 import { userApi, type UserCreateReq, type UserUpdateReq } from '../../../api/user'
 import { roleApi } from '../../../api/role'
@@ -147,6 +148,16 @@ export default function UserListPage() {
     }
   }
 
+  const unlockLogin = async (id: number) => {
+    try {
+      await userApi.unlock(id)
+      message.success('登录锁定已解除')
+      void load()
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : String(e))
+    }
+  }
+
   const openAssign = async (u: User) => {
     setAssigning(u)
     try {
@@ -177,13 +188,15 @@ export default function UserListPage() {
     { title: '邮箱', dataIndex: 'email' },
     {
       title: '状态',
-      dataIndex: 'disabled',
       width: 90,
-      render: (disabled: boolean) => (
-        <Tag color={disabled ? 'error' : 'success'}>
-          {disabled ? '已禁用' : '正常'}
-        </Tag>
-      ),
+      render: (_v, row) => {
+        const locked = row.locked_until > Math.floor(Date.now() / 1000)
+        return (
+          <Tag color={row.disabled ? 'error' : locked ? 'warning' : 'success'}>
+            {row.disabled ? '已禁用' : locked ? '已锁定' : '正常'}
+          </Tag>
+        )
+      },
     },
     {
       title: '注册时间',
@@ -194,51 +207,65 @@ export default function UserListPage() {
     {
       title: '操作',
       key: 'op',
-      width: 440,
-      render: (_v, row) => (
-        <Space>
-          <HasPerm code="user:assign-role">
-            <Button size="small" icon={<SafetyOutlined />} onClick={() => openAssign(row)}>
-              分配角色
-            </Button>
-          </HasPerm>
-          <HasPerm code="user:update">
-            <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(row)}>
-              编辑
-            </Button>
-            <Popconfirm
-              title={`确认强制下线用户 ${row.name}?`}
-              description="该用户所有现有 Token 将立即失效"
-              okText="强制下线"
-              cancelText="取消"
-              disabled={row.id === me?.id}
-              onConfirm={() => revokeSessions(row.id)}
-            >
-              <Button
-                size="small"
-                icon={<StopOutlined />}
+      width: 540,
+      render: (_v, row) => {
+        const locked = row.locked_until > Math.floor(Date.now() / 1000)
+        return (
+          <Space>
+            <HasPerm code="user:assign-role">
+              <Button size="small" icon={<SafetyOutlined />} onClick={() => openAssign(row)}>
+                分配角色
+              </Button>
+            </HasPerm>
+            <HasPerm code="user:update">
+              <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(row)}>
+                编辑
+              </Button>
+              <Popconfirm
+                title={`确认强制下线用户 ${row.name}?`}
+                description="该用户所有现有 Token 将立即失效"
+                okText="强制下线"
+                cancelText="取消"
                 disabled={row.id === me?.id}
+                onConfirm={() => revokeSessions(row.id)}
               >
-                强制下线
-              </Button>
-            </Popconfirm>
-          </HasPerm>
-          <HasPerm code="user:delete">
-            <Popconfirm
-              title={`确认删除用户 ${row.name}?`}
-              okText="删除"
-              okButtonProps={{ danger: true }}
-              cancelText="取消"
-              disabled={row.id === me?.id}
-              onConfirm={() => handleDelete(row.id)}
-            >
-              <Button size="small" danger icon={<DeleteOutlined />} disabled={row.id === me?.id}>
-                删除
-              </Button>
-            </Popconfirm>
-          </HasPerm>
-        </Space>
-      ),
+                <Button
+                  size="small"
+                  icon={<StopOutlined />}
+                  disabled={row.id === me?.id}
+                >
+                  强制下线
+                </Button>
+              </Popconfirm>
+              <Popconfirm
+                title={`确认解除用户 ${row.name} 的登录锁定?`}
+                okText="解除锁定"
+                cancelText="取消"
+                disabled={!locked}
+                onConfirm={() => unlockLogin(row.id)}
+              >
+                <Button size="small" icon={<UnlockOutlined />} disabled={!locked}>
+                  解除锁定
+                </Button>
+              </Popconfirm>
+            </HasPerm>
+            <HasPerm code="user:delete">
+              <Popconfirm
+                title={`确认删除用户 ${row.name}?`}
+                okText="删除"
+                okButtonProps={{ danger: true }}
+                cancelText="取消"
+                disabled={row.id === me?.id}
+                onConfirm={() => handleDelete(row.id)}
+              >
+                <Button size="small" danger icon={<DeleteOutlined />} disabled={row.id === me?.id}>
+                  删除
+                </Button>
+              </Popconfirm>
+            </HasPerm>
+          </Space>
+        )
+      },
     },
   ]
 

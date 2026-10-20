@@ -47,6 +47,7 @@ UserController::UserController() {
     reg.bind("GET",    "/api/users/(\\d+)/roles",          "user:view");
     reg.bind("PUT",    "/api/users/(\\d+)/roles",          "user:assign-role");
     reg.bind("POST",   "/api/users/(\\d+)/revoke-sessions","user:update");
+    reg.bind("POST",   "/api/users/(\\d+)/unlock",         "user:update");
 }
 
 drogon::AsyncTask UserController::registerUser(
@@ -519,6 +520,28 @@ drogon::AsyncTask UserController::revokeUserSessions(
     } catch (const std::exception& error) {
         cb(core::internalError(
             req, "revoke user sessions", error, 5003));
+    }
+}
+
+drogon::AsyncTask UserController::unlockLogin(
+    drogon::HttpRequestPtr req,
+    std::function<void(const drogon::HttpResponsePtr&)> cb,
+    int64_t id) {
+    try {
+        co_await svc_.unlockLogin(id);
+        Json::Value details;
+        details["login_lock_cleared"] = true;
+        co_await audit::AuditService::instance().record(
+            req,
+            "user.unlock",
+            "user",
+            std::to_string(id),
+            std::move(details));
+        cb(core::Result::ok(Json::nullValue, "login unlocked"));
+    } catch (const core::NotFoundError& error) {
+        cb(core::Result::notFound(error.what()));
+    } catch (const std::exception& error) {
+        cb(core::internalError(req, "unlock user login", error, 5003));
     }
 }
 

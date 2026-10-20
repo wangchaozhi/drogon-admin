@@ -32,6 +32,7 @@ describe('ProfilePage', () => {
         name: 'Operator',
         email: 'operator@example.com',
         disabled: false,
+        locked_until: 0,
         created_at: 1_700_000_000,
       },
       roles: ['user'],

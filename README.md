@@ -194,6 +194,7 @@ npm run preview      REM 预览生产构建
 | GET    | /api/users/{id}                    | 是   | —            | 按 id 查询用户          |
 | POST   | /api/users                         | 是   | user:create  | 管理员创建普通用户      |
 | POST   | /api/users/{id}/revoke-sessions    | 是   | user:update  | 强制下线目标用户        |
+| POST   | /api/users/{id}/unlock             | 是   | user:update  | 解除目标用户登录锁定    |
 | GET    | /api/roles                         | 是   | role:view    | 角色列表                |
 | POST   | /api/roles                         | 是   | role:create  | 创建角色                |
 | PUT    | /api/roles/{id}                    | 是   | role:update  | 更新角色                |
@@ -214,7 +215,7 @@ npm run preview      REM 预览生产构建
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-CTest 会启动临时 Drogon 实例和独立 SQLite 数据库，黑盒验证注册/登录、密码与角色变更后的 token 吊销、登录锁定、最后管理员保护、内置角色保护、审计权限/记录/敏感数据隔离以及 CORS/安全响应头。测试不会读写开发数据库。
+CTest 会启动临时 Drogon 实例和独立 SQLite 数据库，黑盒验证注册/登录、密码与角色变更后的 token 吊销、登录锁定及管理员解锁、最后管理员保护、内置角色保护、审计权限/记录/敏感数据隔离以及 CORS/安全响应头。测试不会读写开发数据库。
 
 手工调用示例：
 

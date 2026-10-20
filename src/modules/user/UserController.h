@@ -43,6 +43,9 @@ public:
         ADD_METHOD_TO(UserController::revokeUserSessions,
                       "/api/users/{id:\\d+}/revoke-sessions", drogon::Post,
                       "filters::AuthFilter", "filters::PermissionFilter");
+        ADD_METHOD_TO(UserController::unlockLogin,
+                      "/api/users/{id:\\d+}/unlock", drogon::Post,
+                      "filters::AuthFilter", "filters::PermissionFilter");
 
         // 健康检查（公开，不查 DB，仍为同步）
         ADD_METHOD_TO(UserController::health, "/api/health", drogon::Get);
@@ -96,6 +99,11 @@ public:
                                int64_t id);
 
     drogon::AsyncTask revokeUserSessions(
+        drogon::HttpRequestPtr req,
+        std::function<void(const drogon::HttpResponsePtr&)> cb,
+        int64_t id);
+
+    drogon::AsyncTask unlockLogin(
         drogon::HttpRequestPtr req,
         std::function<void(const drogon::HttpResponsePtr&)> cb,
         int64_t id);

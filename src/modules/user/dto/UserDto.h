@@ -13,15 +13,17 @@ struct UserDto {
     std::string name;
     std::string email;
     bool        disabled{false};
+    int64_t     lockedUntil{0};
     int64_t     createdAt{0};
 
     Json::Value toJson() const {
         Json::Value j;
-        j["id"]         = static_cast<Json::Int64>(id);
-        j["name"]       = name;
-        j["email"]      = email;
-        j["disabled"]   = disabled;
-        j["created_at"] = static_cast<Json::Int64>(createdAt);
+        j["id"]           = static_cast<Json::Int64>(id);
+        j["name"]         = name;
+        j["email"]        = email;
+        j["disabled"]     = disabled;
+        j["locked_until"] = static_cast<Json::Int64>(lockedUntil);
+        j["created_at"]   = static_cast<Json::Int64>(createdAt);
         return j;
     }
 };

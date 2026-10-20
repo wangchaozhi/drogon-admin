@@ -11,6 +11,7 @@ const user: User = {
   name: 'Admin',
   email: 'admin@example.com',
   disabled: false,
+  locked_until: 0,
   created_at: 1,
 }
 

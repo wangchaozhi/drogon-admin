@@ -170,4 +170,11 @@ drogon::Task<> UserService::revokeSessions(int64_t id) {
     co_return;
 }
 
+drogon::Task<> UserService::unlockLogin(int64_t id) {
+    if (!co_await repo_.unlockLogin(id))
+        throw core::NotFoundError("user not found");
+    APP_LOG_INFO << "login unlocked uid=" << id;
+    co_return;
+}
+
 } // namespace modules::user

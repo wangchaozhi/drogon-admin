@@ -1006,6 +1006,43 @@ def run_checks(base_url: str) -> None:
         429,
         "correct password while locked",
     )
+    locked_users = expect_ok(
+        request(
+            base_url,
+            "GET",
+            "/api/users?page=1&page_size=200",
+            token=admin_token,
+        ),
+        "list users with login lock state",
+    )
+    locked_operator = next(
+        user
+        for user in locked_users["items"]
+        if int(user["id"]) == operator_id
+    )
+    assert int(locked_operator["locked_until"]) > int(time.time())
+    expect_ok(
+        request(
+            base_url,
+            "POST",
+            f"/api/users/{operator_id}/unlock",
+            token=admin_token,
+        ),
+        "administrator unlocks operator login",
+    )
+    unlocked_login = expect_ok(
+        request(
+            base_url,
+            "POST",
+            "/api/auth/login",
+            {
+                "email": "operator@example.com",
+                "password": self_changed_password,
+            },
+        ),
+        "operator login after administrator unlock",
+    )
+    operator_token = str(unlocked_login["token"])
     expect_ok(
         request(
             base_url,
@@ -1043,6 +1080,7 @@ def run_checks(base_url: str) -> None:
         "user.delete",
         "user.assign_roles",
         "user.revoke_sessions",
+        "user.unlock",
         "user.change_password",
         "role.create",
         "role.update",

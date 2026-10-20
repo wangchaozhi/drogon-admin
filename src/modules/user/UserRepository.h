@@ -81,6 +81,7 @@ public:
     drogon::Task<LoginAttemptState> recordLoginFailure(
         int64_t id, int maxFailures, int lockSeconds);
     drogon::Task<> resetLoginFailures(int64_t id);
+    drogon::Task<bool> unlockLogin(int64_t id);
 
     // 更新基础资料；passwordHash 为空时不改密码
     drogon::Task<std::optional<dto::UserDto>> updateById(int64_t id,

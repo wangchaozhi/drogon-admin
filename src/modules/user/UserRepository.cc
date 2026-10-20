@@ -13,11 +13,12 @@ namespace {
 
 dto::UserDto userFromRow(const drogon::orm::Row& row) {
     dto::UserDto user;
-    user.id        = row["id"].as<int64_t>();
-    user.name      = row["name"].as<std::string>();
-    user.email     = row["email"].as<std::string>();
-    user.disabled  = row["disabled"].as<int>() != 0;
-    user.createdAt = row["created_at"].as<int64_t>();
+    user.id          = row["id"].as<int64_t>();
+    user.name        = row["name"].as<std::string>();
+    user.email       = row["email"].as<std::string>();
+    user.disabled    = row["disabled"].as<int>() != 0;
+    user.lockedUntil = row["locked_until"].as<int64_t>();
+    user.createdAt   = row["created_at"].as<int64_t>();
     return user;
 }
 
@@ -33,7 +34,8 @@ UserRepository::findById(int64_t id) {
     if (!client) co_return std::nullopt;
 
     auto r = co_await client->execSqlCoro(
-        "SELECT id,name,email,disabled,created_at FROM users WHERE id=?", id);
+        "SELECT id,name,email,disabled,locked_until,created_at "
+        "FROM users WHERE id=?", id);
     if (r.empty()) co_return std::nullopt;
     co_return userFromRow(r[0]);
 }
@@ -177,7 +179,7 @@ UserRepository::listPaged(int page, int pageSize, std::string keyword) {
 
     if (keyword.empty()) {
         auto r = co_await client->execSqlCoro(
-            "SELECT id,name,email,disabled,created_at FROM users "
+            "SELECT id,name,email,disabled,locked_until,created_at FROM users "
             "ORDER BY id DESC LIMIT ? OFFSET ?",
             pageSize, offset);
         for (const auto& row : r) {
@@ -189,7 +191,7 @@ UserRepository::listPaged(int page, int pageSize, std::string keyword) {
     } else {
         std::string like = "%" + keyword + "%";
         auto r = co_await client->execSqlCoro(
-            "SELECT id,name,email,disabled,created_at FROM users "
+            "SELECT id,name,email,disabled,locked_until,created_at FROM users "
             "WHERE name LIKE ? OR email LIKE ? "
             "ORDER BY id DESC LIMIT ? OFFSET ?",
             like, like, pageSize, offset);
@@ -310,6 +312,14 @@ drogon::Task<> UserRepository::resetLoginFailures(int64_t id) {
     co_return;
 }
 
+drogon::Task<bool> UserRepository::unlockLogin(int64_t id) {
+    auto client = db();
+    if (!client) throw std::runtime_error("db client unavailable");
+    auto result = co_await client->execSqlCoro(
+        "UPDATE users SET failed_login_count=0,locked_until=0 WHERE id=?", id);
+    co_return result.affectedRows() == 1;
+}
+
 drogon::Task<std::optional<dto::UserDto>>
 UserRepository::updateById(int64_t id,
                            std::string name,
@@ -363,7 +373,8 @@ UserRepository::updateById(int64_t id,
     if (!updated) co_return std::nullopt;
 
     auto rows = co_await tx->execSqlCoro(
-        "SELECT id,name,email,disabled,created_at FROM users WHERE id=?", id);
+        "SELECT id,name,email,disabled,locked_until,created_at "
+        "FROM users WHERE id=?", id);
     if (rows.empty()) co_return std::nullopt;
     co_return userFromRow(rows[0]);
 }

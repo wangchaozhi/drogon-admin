@@ -4,6 +4,7 @@ export type User = {
   name: string
   email: string
   disabled: boolean
+  locked_until: number
   created_at: number
 }
 

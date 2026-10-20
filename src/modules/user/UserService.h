@@ -76,6 +76,9 @@ public:
     // 安全退出：吊销该账号当前签发的全部 token。
     drogon::Task<> revokeSessions(int64_t id);
 
+    // 管理员解除账号登录锁定并清零失败计数。
+    drogon::Task<> unlockLogin(int64_t id);
+
     UserRepository& repo() { return repo_; }
 
 private:
