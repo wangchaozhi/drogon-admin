@@ -1,9 +1,24 @@
 #pragma once
 
+#include <algorithm>
 #include <cctype>
+#include <string>
 #include <string_view>
 
 namespace modules::user::dto::validation {
+
+inline std::string normalizeEmail(std::string value) {
+    const auto first = value.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) return {};
+    const auto last = value.find_last_not_of(" \t\r\n");
+    value = value.substr(first, last - first + 1);
+    std::transform(
+        value.begin(), value.end(), value.begin(),
+        [](unsigned char character) {
+            return static_cast<char>(std::tolower(character));
+        });
+    return value;
+}
 
 inline bool validEmail(std::string_view value) {
     if (value.empty() || value.size() > 254) return false;

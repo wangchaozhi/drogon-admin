@@ -23,7 +23,8 @@ struct UpdateUserReq {
         }
         UpdateUserReq req;
         req.name  = j.get("name",  "").asString();
-        req.email = j.get("email", "").asString();
+        req.email = validation::normalizeEmail(
+            j.get("email", "").asString());
         if (req.name.empty()) { err = "name is required"; return std::nullopt; }
         if (req.name.size() > 100) {
             err = "name must be at most 100 chars";

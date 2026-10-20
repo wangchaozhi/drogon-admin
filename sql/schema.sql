@@ -4,7 +4,7 @@
 CREATE TABLE IF NOT EXISTS users (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     name          TEXT    NOT NULL,
-    email         TEXT    NOT NULL UNIQUE,
+    email         TEXT    COLLATE NOCASE NOT NULL UNIQUE,
     password_hash TEXT    NOT NULL DEFAULT '',
     disabled      INTEGER NOT NULL DEFAULT 0,
     token_version INTEGER NOT NULL DEFAULT 0,
@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_nocase
+    ON users(email COLLATE NOCASE);
 
 -- ===================== RBAC =====================
 

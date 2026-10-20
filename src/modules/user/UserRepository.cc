@@ -46,7 +46,7 @@ UserRepository::findByEmail(std::string email) {
     auto r = co_await client->execSqlCoro(
         "SELECT id,name,email,password_hash,disabled,token_version,"
         "failed_login_count,locked_until,created_at "
-        "FROM users WHERE email=?",
+        "FROM users WHERE email=? COLLATE NOCASE",
         email);
     if (r.empty()) co_return std::nullopt;
     const auto& row = r[0];

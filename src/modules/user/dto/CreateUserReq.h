@@ -23,7 +23,8 @@ struct CreateUserReq {
         }
         CreateUserReq req;
         req.name     = j.get("name", "").asString();
-        req.email    = j.get("email", "").asString();
+        req.email    = validation::normalizeEmail(
+            j.get("email", "").asString());
         req.password = j.get("password", "").asString();
         if (req.name.empty()) { err = "name is required"; return std::nullopt; }
         if (req.name.size() > 100) {

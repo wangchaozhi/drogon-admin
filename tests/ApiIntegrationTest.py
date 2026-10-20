@@ -193,9 +193,14 @@ def verify_migration_state(root: Path) -> None:
                 "SELECT version FROM schema_migrations"
             )
         }
-        if "001_user_auth_security" not in versions:
+        expected_versions = {
+            "001_user_auth_security",
+            "002_email_nocase",
+        }
+        if not expected_versions.issubset(versions):
             raise AssertionError(
-                f"migration version was not recorded: {sorted(versions)}"
+                "migration versions were not recorded: "
+                f"{sorted(expected_versions - versions)}"
             )
 
 
@@ -340,13 +345,14 @@ def run_checks(base_url: str) -> None:
             "/api/auth/register",
             {
                 "name": "Admin",
-                "email": "admin@example.com",
+                "email": " Admin@Example.COM ",
                 "password": admin_password,
             },
         ),
         "first administrator registration",
     )
     admin_id = int(admin["id"])
+    assert admin["email"] == "admin@example.com"
     expect_status(
         request(
             base_url,
@@ -367,7 +373,7 @@ def run_checks(base_url: str) -> None:
             base_url,
             "POST",
             "/api/auth/login",
-            {"email": "admin@example.com", "password": admin_password},
+            {"email": " ADMIN@example.COM ", "password": admin_password},
         ),
         "administrator login",
     )
@@ -377,6 +383,21 @@ def run_checks(base_url: str) -> None:
         "authenticated profile",
     )
     assert int(me["user"]["id"]) == admin_id
+    expect_status(
+        request(
+            base_url,
+            "POST",
+            "/api/users",
+            {
+                "name": "Duplicate Admin",
+                "email": "ADMIN@EXAMPLE.COM",
+                "password": "Duplicate-Horse-2026!",
+            },
+            token=admin_token,
+        ),
+        409,
+        "reject case-variant duplicate email",
+    )
     expect_status(
         request(
             base_url,

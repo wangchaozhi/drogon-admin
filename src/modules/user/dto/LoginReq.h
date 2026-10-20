@@ -2,6 +2,7 @@
 //
 // 登录请求 DTO：邮箱 + 密码。
 //
+#include "Validation.h"
 #include <json/json.h>
 #include <optional>
 #include <string>
@@ -19,7 +20,8 @@ struct LoginReq {
             return std::nullopt;
         }
         LoginReq req;
-        req.email    = j.get("email", "").asString();
+        req.email    = validation::normalizeEmail(
+            j.get("email", "").asString());
         req.password = j.get("password", "").asString();
         if (req.email.empty())    { err = "email is required";    return std::nullopt; }
         if (req.password.empty()) { err = "password is required"; return std::nullopt; }
