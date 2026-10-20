@@ -3,6 +3,7 @@
 #include "core/ErrorHandler.h"
 #include "core/Result.h"
 #include "core/Logger.h"
+#include "dto/ChangePasswordReq.h"
 #include "dto/CreateUserReq.h"
 #include "dto/LoginReq.h"
 #include "dto/UpdateUserReq.h"
@@ -222,6 +223,41 @@ drogon::AsyncTask UserController::me(
         cb(core::Result::ok(std::move(data)));
     } catch (const std::exception& e) {
         cb(core::internalError(req, "load current user", e, 5001));
+    }
+}
+
+drogon::AsyncTask UserController::changePassword(
+    drogon::HttpRequestPtr req,
+    std::function<void(const drogon::HttpResponsePtr&)> cb) {
+    const auto attrs = req->attributes();
+    if (!attrs || !attrs->find("userId")) {
+        cb(core::Result::unauthorized("missing auth context"));
+        co_return;
+    }
+
+    const auto json = req->getJsonObject();
+    if (!json) {
+        cb(core::Result::fail(4001, "invalid json body"));
+        co_return;
+    }
+    std::string error;
+    auto request = dto::ChangePasswordReq::parse(*json, error);
+    if (!request) {
+        cb(core::Result::fail(4002, error));
+        co_return;
+    }
+
+    try {
+        co_await svc_.changePassword(
+            attrs->get<int64_t>("userId"), std::move(*request));
+        cb(core::Result::ok(
+            Json::nullValue, "password changed; please sign in again"));
+    } catch (const CurrentPasswordInvalidError& exception) {
+        cb(core::Result::fail(
+            4003, exception.what(), drogon::k400BadRequest));
+    } catch (const std::exception& exception) {
+        cb(core::internalError(
+            req, "change current user password", exception, 5003));
     }
 }
 

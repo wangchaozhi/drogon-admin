@@ -39,6 +39,7 @@ public:
 
     drogon::Task<std::optional<UserRecord>>   findByEmail(std::string email);
     drogon::Task<std::optional<AuthState>>    findAuthState(int64_t id);
+    drogon::Task<std::optional<std::string>>  findPasswordHash(int64_t id);
 
     drogon::Task<dto::UserDto>                insert(std::string name,
                                                      std::string email,
@@ -71,6 +72,10 @@ public:
     drogon::Task<> updatePasswordHash(int64_t id,
                                       std::string passwordHash,
                                       bool revokeTokens = false);
+    drogon::Task<bool> replacePasswordHash(
+        int64_t id,
+        std::string expectedHash,
+        std::string passwordHash);
 
     drogon::Task<LoginAttemptState> recordLoginFailure(
         int64_t id, int maxFailures, int lockSeconds);

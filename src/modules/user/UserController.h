@@ -21,6 +21,9 @@ public:
         // 受保护接口
         ADD_METHOD_TO(UserController::me,       "/api/users/me",        drogon::Get,
                       "filters::AuthFilter");
+        ADD_METHOD_TO(UserController::changePassword,
+                      "/api/users/me/password", drogon::Put,
+                      "filters::AuthFilter");
         ADD_METHOD_TO(UserController::list,     "/api/users",           drogon::Get,
                       "filters::AuthFilter", "filters::PermissionFilter");
         ADD_METHOD_TO(UserController::getById,  "/api/users/{id:\\d+}", drogon::Get,
@@ -59,6 +62,10 @@ public:
 
     drogon::AsyncTask me(drogon::HttpRequestPtr req,
                          std::function<void(const drogon::HttpResponsePtr&)> cb);
+
+    drogon::AsyncTask changePassword(
+        drogon::HttpRequestPtr req,
+        std::function<void(const drogon::HttpResponsePtr&)> cb);
 
     drogon::AsyncTask list(drogon::HttpRequestPtr req,
                            std::function<void(const drogon::HttpResponsePtr&)> cb);

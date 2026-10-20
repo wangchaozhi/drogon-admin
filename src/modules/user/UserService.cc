@@ -137,4 +137,25 @@ UserService::login(dto::LoginReq req) {
     co_return r;
 }
 
+drogon::Task<> UserService::changePassword(
+    int64_t id,
+    dto::ChangePasswordReq req) {
+    auto currentHash = co_await repo_.findPasswordHash(id);
+    if (!currentHash
+        || !common::CryptoUtil::verifyPassword(
+            req.currentPassword, *currentHash)) {
+        throw CurrentPasswordInvalidError("current password is incorrect");
+    }
+
+    auto newHash =
+        common::CryptoUtil::hashPassword(req.newPassword);
+    const bool updated = co_await repo_.replacePasswordHash(
+        id, std::move(*currentHash), std::move(newHash));
+    if (!updated)
+        throw CurrentPasswordInvalidError(
+            "password changed concurrently; please try again");
+    APP_LOG_INFO << "password changed uid=" << id;
+    co_return;
+}
+
 } // namespace modules::user

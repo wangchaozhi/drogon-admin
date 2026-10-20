@@ -4,6 +4,7 @@
 // 在协程内以 co_await 串联 Repository 与 RbacService 调用。
 //
 #include "UserRepository.h"
+#include "dto/ChangePasswordReq.h"
 #include "dto/CreateUserReq.h"
 #include "dto/LoginReq.h"
 #include "dto/UpdateUserReq.h"
@@ -40,6 +41,11 @@ private:
     int retryAfter_;
 };
 
+class CurrentPasswordInvalidError : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
+
 class RegistrationClosedError : public std::runtime_error {
 public:
     using std::runtime_error::runtime_error;
@@ -63,6 +69,9 @@ public:
 
     // 登录：失败时抛 LoginInvalidError；DB 异常走底层抛出的 DrogonDbException
     drogon::Task<LoginResult> login(dto::LoginReq req);
+
+    // 用户修改自己的密码；成功后递增 token_version，使所有现有 token 失效。
+    drogon::Task<> changePassword(int64_t id, dto::ChangePasswordReq req);
 
     UserRepository& repo() { return repo_; }
 

@@ -1,14 +1,42 @@
 // 个人中心：展示当前用户信息 + 角色 + 权限汇总。
-import { Card, Descriptions, Tag, Typography } from 'antd'
+import { useState } from 'react'
+import { Button, Card, Descriptions, Form, Input, Tag, Typography, message } from 'antd'
+import { useNavigate } from 'react-router-dom'
+import { userApi } from '../../api/user'
 import { useAuth } from '../../hooks/useAuth'
 import { useDevice } from '../../hooks/useDevice'
 
 const { Title } = Typography
 
+type PasswordForm = {
+  currentPassword: string
+  newPassword: string
+  confirmPassword: string
+}
+
 export default function ProfilePage() {
-  const { user, roles, permissions } = useAuth()
+  const { user, roles, permissions, logout } = useAuth()
   const { isMobile, isDesktop } = useDevice()
+  const navigate = useNavigate()
+  const [submitting, setSubmitting] = useState(false)
   if (!user) return null
+
+  const changePassword = async (values: PasswordForm) => {
+    setSubmitting(true)
+    try {
+      await userApi.changePassword({
+        current_password: values.currentPassword,
+        new_password: values.newPassword,
+      })
+      message.success('密码已修改，请重新登录')
+      logout()
+      navigate('/login', { replace: true })
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : String(error))
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   return (
     <div>
@@ -35,6 +63,61 @@ export default function ProfilePage() {
               : '—'}
           </Descriptions.Item>
         </Descriptions>
+      </Card>
+      <Card
+        className="page-card"
+        style={{ marginTop: 16 }}
+        styles={{ body: { padding: isMobile ? 12 : 24 } }}
+      >
+        <Title level={4} style={{ marginTop: 0 }}>修改密码</Title>
+        <Typography.Paragraph type="secondary">
+          修改成功后，所有已登录设备上的会话都会失效。
+        </Typography.Paragraph>
+        <Form<PasswordForm>
+          layout="vertical"
+          onFinish={changePassword}
+          style={{ maxWidth: 480 }}
+          requiredMark={false}
+        >
+          <Form.Item
+            label="当前密码"
+            name="currentPassword"
+            rules={[{ required: true, message: '请输入当前密码' }]}
+          >
+            <Input.Password autoComplete="current-password" />
+          </Form.Item>
+          <Form.Item
+            label="新密码"
+            name="newPassword"
+            rules={[
+              { required: true, message: '请输入新密码' },
+              { min: 12, max: 256, message: '密码长度应为 12–256 位' },
+            ]}
+          >
+            <Input.Password autoComplete="new-password" />
+          </Form.Item>
+          <Form.Item
+            label="确认新密码"
+            name="confirmPassword"
+            dependencies={['newPassword']}
+            rules={[
+              { required: true, message: '请再次输入新密码' },
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  if (!value || getFieldValue('newPassword') === value) {
+                    return Promise.resolve()
+                  }
+                  return Promise.reject(new Error('两次输入的密码不一致'))
+                },
+              }),
+            ]}
+          >
+            <Input.Password autoComplete="new-password" />
+          </Form.Item>
+          <Button type="primary" htmlType="submit" loading={submitting}>
+            修改密码
+          </Button>
+        </Form>
       </Card>
     </div>
   )

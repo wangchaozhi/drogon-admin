@@ -328,6 +328,7 @@ def run_checks(base_url: str) -> None:
     admin_password = "Admin-Horse-2026!"
     operator_password = "Operator-Horse-2026!"
     new_operator_password = "Updated-Operator-2026!"
+    self_changed_password = "Self-Changed-Operator-2026!"
 
     admin = expect_ok(
         request(
@@ -566,6 +567,64 @@ def run_checks(base_url: str) -> None:
         "operator login after password change",
     )
     operator_token = str(operator_login["token"])
+    expect_status(
+        request(
+            base_url,
+            "PUT",
+            "/api/users/me/password",
+            {
+                "current_password": "Wrong-Current-Password!",
+                "new_password": self_changed_password,
+            },
+            token=operator_token,
+        ),
+        400,
+        "reject incorrect current password",
+    )
+    expect_ok(
+        request(
+            base_url,
+            "PUT",
+            "/api/users/me/password",
+            {
+                "current_password": new_operator_password,
+                "new_password": self_changed_password,
+            },
+            token=operator_token,
+        ),
+        "change own password",
+    )
+    expect_status(
+        request(base_url, "GET", "/api/users/me", token=operator_token),
+        401,
+        "old token after own password change",
+    )
+    expect_status(
+        request(
+            base_url,
+            "POST",
+            "/api/auth/login",
+            {
+                "email": "operator@example.com",
+                "password": new_operator_password,
+            },
+        ),
+        401,
+        "old password after own password change",
+    )
+    operator_login = expect_ok(
+        request(
+            base_url,
+            "POST",
+            "/api/auth/login",
+            {
+                "email": "operator@example.com",
+                "password": self_changed_password,
+            },
+        ),
+        "login with self-changed password",
+    )
+    operator_token = str(operator_login["token"])
 
     expect_ok(
         request(
@@ -624,7 +683,7 @@ def run_checks(base_url: str) -> None:
             "/api/auth/login",
             {
                 "email": "operator@example.com",
-                "password": new_operator_password,
+                "password": self_changed_password,
             },
         ),
         429,

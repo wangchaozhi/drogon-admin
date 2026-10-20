@@ -25,6 +25,11 @@ export type UserUpdateReq = {
   disabled?: boolean
 }
 
+export type ChangePasswordReq = {
+  current_password: string
+  new_password: string
+}
+
 export const userApi = {
   list: (page = 1, pageSize = 10, keyword = '') =>
     http.get<UserPage>(
@@ -37,4 +42,6 @@ export const userApi = {
     http.get<UserRoleIds>(`/api/users/${id}/roles`).then((r) => ({ ...r, data: r.data.role_ids })),
   setRoles: (id: number, role_ids: number[]) =>
     http.put(`/api/users/${id}/roles`, { role_ids }),
+  changePassword: (req: ChangePasswordReq) =>
+    http.put('/api/users/me/password', req),
 }

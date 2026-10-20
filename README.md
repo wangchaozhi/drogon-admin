@@ -105,6 +105,8 @@ drogon-admin.exe
 `DROGON_LOGIN_MAX_FAILURES`（3–20）和
 `DROGON_LOGIN_LOCK_SECONDS`（30–86400）调整。JWT 携带会话版本；
 修改密码后旧 token 立即失效，受保护请求也会实时拒绝已禁用或已删除账号。
+用户可在个人中心验证当前密码后自行设置新密码；成功后所有设备的现有 token
+都会立即失效，并要求重新登录。
 管理员可在用户编辑页启用或禁用账号；修改邮箱、密码、状态或角色都会吊销该用户的现有 token。
 系统以事务保护最后一个可用管理员，禁止删除、禁用或移除其管理员角色；内置 `admin` 角色具备系统级超级权限，且内置角色不可删除、管理员权限映射不可手工修改。
 未预期的数据库和服务端异常只向客户端返回通用错误，详细原因与请求 ID
@@ -169,6 +171,7 @@ npm run preview      REM 预览生产构建
 | POST   | /api/auth/register                 | 否   | —            | 按注册策略创建账号      |
 | POST   | /api/auth/login                    | 否   | —            | 登录，返回 JWT          |
 | GET    | /api/users/me                      | 是   | —            | 获取当前登录用户        |
+| PUT    | /api/users/me/password             | 是   | —            | 修改当前用户密码        |
 | GET    | /api/users/{id}                    | 是   | —            | 按 id 查询用户          |
 | POST   | /api/users                         | 是   | user:create  | 管理员创建普通用户      |
 | GET    | /api/roles                         | 是   | role:view    | 角色列表                |
