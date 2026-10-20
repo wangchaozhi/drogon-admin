@@ -6,6 +6,8 @@
 #include <drogon/plugins/Plugin.h>
 #include <json/json.h>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace plugins {
 
@@ -22,6 +24,10 @@ public:
     const std::string& registrationMode() const { return registrationMode_; }
     int loginMaxFailures() const { return loginMaxFailures_; }
     int loginLockSeconds() const { return loginLockSeconds_; }
+    bool isCorsOriginAllowed(std::string_view origin) const;
+    bool corsAllowCredentials() const { return corsAllowCredentials_; }
+    int corsMaxAgeSeconds() const { return corsMaxAgeSeconds_; }
+    bool hstsEnabled() const { return hstsEnabled_; }
 
 private:
     std::string jwtSecret_;
@@ -30,6 +36,10 @@ private:
     std::string registrationMode_{"first-user"};
     int loginMaxFailures_{5};
     int loginLockSeconds_{900};
+    std::vector<std::string> corsAllowedOrigins_;
+    bool corsAllowCredentials_{false};
+    int corsMaxAgeSeconds_{600};
+    bool hstsEnabled_{false};
 };
 
 } // namespace plugins

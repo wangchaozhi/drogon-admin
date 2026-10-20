@@ -1,5 +1,6 @@
 #include "Bootstrap.h"
 #include "Logger.h"
+#include "filters/CorsFilter.h"
 #include <drogon/drogon.h>
 #include <drogon/orm/DbClient.h>
 #include <trantor/utils/AsyncFileLogger.h>
@@ -205,6 +206,18 @@ void Bootstrap::init(const std::string& configPath) {
     setupDualLogging();
 
     ensureDbDirAndSchema();
+
+    // CORS 必须覆盖 404/鉴权失败等所有响应，因此使用全局 advice，而非逐路由挂 Filter。
+    app.registerSyncAdvice([](const drogon::HttpRequestPtr& req) {
+        if (filters::CorsFilter::isPreflight(req))
+            return filters::CorsFilter::handlePreflight(req);
+        return drogon::HttpResponsePtr{};
+    });
+    app.registerPreSendingAdvice(
+        [](const drogon::HttpRequestPtr& req,
+           const drogon::HttpResponsePtr& resp) {
+            filters::CorsFilter::applyResponseHeaders(req, resp);
+        });
 
     // 启动 banner
     app.registerBeginningAdvice([]() {

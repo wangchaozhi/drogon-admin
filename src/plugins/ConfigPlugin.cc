@@ -3,8 +3,11 @@
 #include <drogon/drogon.h>
 #include <openssl/rand.h>
 
+#include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstdlib>
+#include <sstream>
 #include <stdexcept>
 
 namespace plugins {
@@ -27,6 +30,51 @@ int intEnvOrDefault(const char* name, int fallback) {
     } catch (const std::exception&) {
         throw std::runtime_error(std::string(name) + " must be an integer");
     }
+}
+
+bool boolEnvOrDefault(const char* name, bool fallback) {
+    auto value = envOrEmpty(name);
+    if (value.empty()) return fallback;
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char c) {
+                       return static_cast<char>(std::tolower(c));
+                   });
+    if (value == "1" || value == "true" || value == "yes") return true;
+    if (value == "0" || value == "false" || value == "no") return false;
+    throw std::runtime_error(
+        std::string(name) + " must be true or false");
+}
+
+std::string trim(std::string value) {
+    const auto first = value.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) return {};
+    const auto last = value.find_last_not_of(" \t\r\n");
+    value = value.substr(first, last - first + 1);
+    if (value.size() > 8 && value.back() == '/') value.pop_back();
+    return value;
+}
+
+bool validOrigin(const std::string& origin) {
+    if (origin == "*") return true;
+    const bool hasScheme =
+        origin.rfind("http://", 0) == 0
+        || origin.rfind("https://", 0) == 0;
+    if (!hasScheme) return false;
+    const auto schemeEnd = origin.find("://") + 3;
+    if (schemeEnd >= origin.size()) return false;
+    return origin.find_first_of("/?# \t\r\n", schemeEnd)
+        == std::string::npos;
+}
+
+std::vector<std::string> parseOrigins(const std::string& value) {
+    std::vector<std::string> origins;
+    std::stringstream stream(value);
+    std::string item;
+    while (std::getline(stream, item, ',')) {
+        item = trim(std::move(item));
+        if (!item.empty()) origins.push_back(std::move(item));
+    }
+    return origins;
 }
 
 std::string randomSecret() {
@@ -78,6 +126,33 @@ void ConfigPlugin::initAndStart(const Json::Value& /*pluginCfg*/) {
     loginLockSeconds_ = intEnvOrDefault(
         "DROGON_LOGIN_LOCK_SECONDS", loginLockSeconds_);
 
+    if (custom.isMember("cors_allowed_origins")) {
+        const auto& origins = custom["cors_allowed_origins"];
+        if (!origins.isArray())
+            throw std::runtime_error("cors_allowed_origins must be an array");
+        for (const auto& origin : origins) {
+            if (!origin.isString())
+                throw std::runtime_error(
+                    "cors_allowed_origins entries must be strings");
+            corsAllowedOrigins_.push_back(trim(origin.asString()));
+        }
+    }
+    const auto corsOriginsEnv = envOrEmpty("DROGON_CORS_ALLOWED_ORIGINS");
+    if (!corsOriginsEnv.empty())
+        corsAllowedOrigins_ = parseOrigins(corsOriginsEnv);
+    if (custom.isMember("cors_allow_credentials"))
+        corsAllowCredentials_ = custom["cors_allow_credentials"].asBool();
+    if (custom.isMember("cors_max_age_seconds"))
+        corsMaxAgeSeconds_ = custom["cors_max_age_seconds"].asInt();
+    if (custom.isMember("enable_hsts"))
+        hstsEnabled_ = custom["enable_hsts"].asBool();
+    corsAllowCredentials_ = boolEnvOrDefault(
+        "DROGON_CORS_ALLOW_CREDENTIALS", corsAllowCredentials_);
+    corsMaxAgeSeconds_ = intEnvOrDefault(
+        "DROGON_CORS_MAX_AGE_SECONDS", corsMaxAgeSeconds_);
+    hstsEnabled_ = boolEnvOrDefault(
+        "DROGON_ENABLE_HSTS", hstsEnabled_);
+
     if (jwtExpireSec_ < 300 || jwtExpireSec_ > 86400)
         throw std::runtime_error(
             "jwt_expire_seconds must be between 300 and 86400");
@@ -93,6 +168,29 @@ void ConfigPlugin::initAndStart(const Json::Value& /*pluginCfg*/) {
     if (loginLockSeconds_ < 30 || loginLockSeconds_ > 86400)
         throw std::runtime_error(
             "login_lock_seconds must be between 30 and 86400");
+    if (corsMaxAgeSeconds_ < 0 || corsMaxAgeSeconds_ > 86400)
+        throw std::runtime_error(
+            "cors_max_age_seconds must be between 0 and 86400");
+
+    std::sort(corsAllowedOrigins_.begin(), corsAllowedOrigins_.end());
+    corsAllowedOrigins_.erase(
+        std::unique(corsAllowedOrigins_.begin(), corsAllowedOrigins_.end()),
+        corsAllowedOrigins_.end());
+    for (const auto& origin : corsAllowedOrigins_) {
+        if (!validOrigin(origin))
+            throw std::runtime_error(
+                "invalid CORS origin (expected exact http(s) origin): "
+                + origin);
+    }
+    const bool wildcardCors = std::binary_search(
+        corsAllowedOrigins_.begin(), corsAllowedOrigins_.end(),
+        std::string("*"));
+    if (wildcardCors && corsAllowCredentials_)
+        throw std::runtime_error(
+            "CORS wildcard cannot be combined with credentials");
+    if (environment_ == "production" && wildcardCors)
+        throw std::runtime_error(
+            "CORS wildcard is not allowed in production");
 
     if (insecureSecret(jwtSecret_)) {
         if (environment_ == "production")
@@ -108,11 +206,29 @@ void ConfigPlugin::initAndStart(const Json::Value& /*pluginCfg*/) {
                  << ", jwtExpireSec=" << jwtExpireSec_
                  << ", registrationMode=" << registrationMode_
                  << ", loginMaxFailures=" << loginMaxFailures_
-                 << ", loginLockSeconds=" << loginLockSeconds_;
+                 << ", loginLockSeconds=" << loginLockSeconds_
+                 << ", corsOrigins=" << corsAllowedOrigins_.size()
+                 << ", corsCredentials=" << corsAllowCredentials_
+                 << ", hsts=" << hstsEnabled_;
+    if (environment_ == "production" && !hstsEnabled_) {
+        APP_LOG_WARN
+            << "HSTS is disabled; enable it only when every public request "
+               "is served through HTTPS";
+    }
 }
 
 void ConfigPlugin::shutdown() {
     APP_LOG_INFO << "ConfigPlugin shutdown";
+}
+
+bool ConfigPlugin::isCorsOriginAllowed(std::string_view origin) const {
+    auto normalized = trim(std::string(origin));
+    return std::binary_search(
+               corsAllowedOrigins_.begin(), corsAllowedOrigins_.end(),
+               std::string("*"))
+        || std::binary_search(
+               corsAllowedOrigins_.begin(), corsAllowedOrigins_.end(),
+               normalized);
 }
 
 } // namespace plugins

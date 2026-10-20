@@ -103,6 +103,22 @@ drogon-admin.exe
 管理员可在用户编辑页启用或禁用账号；修改邮箱、密码、状态或角色都会吊销该用户的现有 token。
 系统以事务保护最后一个可用管理员，禁止删除、禁用或移除其管理员角色；内置 `admin` 角色具备系统级超级权限，且内置角色不可删除、管理员权限映射不可手工修改。
 
+### CORS 与生产边界
+
+默认不允许跨域（开发服务器已通过 Vite proxy 访问 `/api`）。前后端不同源部署时，使用逗号分隔的**精确 origin** 白名单：
+
+```bash
+DROGON_CORS_ALLOWED_ORIGINS=https://admin.example.com,https://ops.example.com
+DROGON_CORS_ALLOW_CREDENTIALS=false
+DROGON_CORS_MAX_AGE_SECONDS=600
+```
+
+生产环境禁止 `*`；预检只接受 `GET/POST/PUT/DELETE/PATCH` 和
+`Authorization/Content-Type/X-Request-ID`。所有 API 响应（包括鉴权失败和
+404）统一附加 CORS 与安全响应头，认证响应使用 `Cache-Control: no-store`。
+
+推荐由 Nginx/Caddy/云负载均衡终止 TLS，并让 Drogon 仅对内网监听。确认所有公网流量均为 HTTPS 后再设置 `DROGON_ENABLE_HSTS=true`；否则不要提前启用 HSTS。
+
 ## 前端开发与构建
 
 ```bat
