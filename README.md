@@ -115,6 +115,7 @@ drogon-admin.exe
 邮箱登录标识会去除首尾空白并统一为小写，数据库通过 `COLLATE NOCASE`
 唯一索引阻止仅大小写不同的重复账号。
 管理员可在用户编辑页启用或禁用账号；修改邮箱、密码、状态或角色都会吊销该用户的现有 token。
+用户管理页还提供“强制下线”，可按需吊销目标账号全部现有 Token，并写入审计日志。
 系统以事务保护最后一个可用管理员，禁止删除、禁用或移除其管理员角色；内置 `admin` 角色具备系统级超级权限，且内置角色不可删除、管理员权限映射不可手工修改。
 用户、角色和菜单的关键写操作以及自助改密会写入不可随主体删除的审计日志，
 记录操作者、操作类型、目标、请求 ID、时间和经过白名单筛选的安全详情。
@@ -192,6 +193,7 @@ npm run preview      REM 预览生产构建
 | PUT    | /api/users/me/password             | 是   | —            | 修改当前用户密码        |
 | GET    | /api/users/{id}                    | 是   | —            | 按 id 查询用户          |
 | POST   | /api/users                         | 是   | user:create  | 管理员创建普通用户      |
+| POST   | /api/users/{id}/revoke-sessions    | 是   | user:update  | 强制下线目标用户        |
 | GET    | /api/roles                         | 是   | role:view    | 角色列表                |
 | POST   | /api/roles                         | 是   | role:create  | 创建角色                |
 | PUT    | /api/roles/{id}                    | 是   | role:update  | 更新角色                |

@@ -22,6 +22,7 @@ import {
   PlusOutlined,
   SafetyOutlined,
   SearchOutlined,
+  StopOutlined,
 } from '@ant-design/icons'
 import { userApi, type UserCreateReq, type UserUpdateReq } from '../../../api/user'
 import { roleApi } from '../../../api/role'
@@ -137,6 +138,15 @@ export default function UserListPage() {
     }
   }
 
+  const revokeSessions = async (id: number) => {
+    try {
+      await userApi.revokeSessions(id)
+      message.success('该用户的现有会话已全部吊销')
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : String(e))
+    }
+  }
+
   const openAssign = async (u: User) => {
     setAssigning(u)
     try {
@@ -184,7 +194,7 @@ export default function UserListPage() {
     {
       title: '操作',
       key: 'op',
-      width: 320,
+      width: 440,
       render: (_v, row) => (
         <Space>
           <HasPerm code="user:assign-role">
@@ -196,6 +206,22 @@ export default function UserListPage() {
             <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(row)}>
               编辑
             </Button>
+            <Popconfirm
+              title={`确认强制下线用户 ${row.name}?`}
+              description="该用户所有现有 Token 将立即失效"
+              okText="强制下线"
+              cancelText="取消"
+              disabled={row.id === me?.id}
+              onConfirm={() => revokeSessions(row.id)}
+            >
+              <Button
+                size="small"
+                icon={<StopOutlined />}
+                disabled={row.id === me?.id}
+              >
+                强制下线
+              </Button>
+            </Popconfirm>
           </HasPerm>
           <HasPerm code="user:delete">
             <Popconfirm

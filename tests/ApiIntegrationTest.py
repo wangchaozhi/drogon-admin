@@ -748,6 +748,43 @@ def run_checks(base_url: str) -> None:
         403,
         "deny audit logs without audit:view",
     )
+    expect_ok(
+        request(
+            base_url,
+            "POST",
+            f"/api/users/{operator_id}/revoke-sessions",
+            token=admin_token,
+        ),
+        "administrator revokes user sessions",
+    )
+    expect_status(
+        request(base_url, "GET", "/api/users/me", token=operator_token),
+        401,
+        "operator token after administrator revocation",
+    )
+    operator_login = expect_ok(
+        request(
+            base_url,
+            "POST",
+            "/api/auth/login",
+            {
+                "email": "operator@example.com",
+                "password": operator_password,
+            },
+        ),
+        "operator login after session revocation",
+    )
+    operator_token = str(operator_login["token"])
+    expect_status(
+        request(
+            base_url,
+            "POST",
+            f"/api/users/{admin_id}/revoke-sessions",
+            token=admin_token,
+        ),
+        400,
+        "reject self session revocation through administrator endpoint",
+    )
 
     last_admin_update = {
         "name": "Admin",
@@ -1005,6 +1042,7 @@ def run_checks(base_url: str) -> None:
         "user.update",
         "user.delete",
         "user.assign_roles",
+        "user.revoke_sessions",
         "user.change_password",
         "role.create",
         "role.update",

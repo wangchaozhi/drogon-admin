@@ -46,6 +46,7 @@ UserController::UserController() {
     reg.bind("DELETE", "/api/users/(\\d+)",                "user:delete");
     reg.bind("GET",    "/api/users/(\\d+)/roles",          "user:view");
     reg.bind("PUT",    "/api/users/(\\d+)/roles",          "user:assign-role");
+    reg.bind("POST",   "/api/users/(\\d+)/revoke-sessions","user:update");
 }
 
 drogon::AsyncTask UserController::registerUser(
@@ -483,6 +484,41 @@ drogon::AsyncTask UserController::setRoles(
         cb(core::Result::fail(4002, e.what(), drogon::k400BadRequest));
     } catch (const std::exception& e) {
         cb(core::internalError(req, "set user roles", e, 5003));
+    }
+}
+
+drogon::AsyncTask UserController::revokeUserSessions(
+    drogon::HttpRequestPtr req,
+    std::function<void(const drogon::HttpResponsePtr&)> cb,
+    int64_t id) {
+    const auto attrs = req->attributes();
+    const auto currentUserId =
+        attrs && attrs->find("userId")
+            ? attrs->get<int64_t>("userId")
+            : int64_t{0};
+    if (currentUserId == id) {
+        cb(core::Result::fail(
+            4003,
+            "use the logout endpoint to revoke your own sessions",
+            drogon::k400BadRequest));
+        co_return;
+    }
+    try {
+        co_await svc_.revokeSessions(id);
+        Json::Value details;
+        details["all_sessions_revoked"] = true;
+        co_await audit::AuditService::instance().record(
+            req,
+            "user.revoke_sessions",
+            "user",
+            std::to_string(id),
+            std::move(details));
+        cb(core::Result::ok(Json::nullValue, "sessions revoked"));
+    } catch (const core::NotFoundError& error) {
+        cb(core::Result::notFound(error.what()));
+    } catch (const std::exception& error) {
+        cb(core::internalError(
+            req, "revoke user sessions", error, 5003));
     }
 }
 

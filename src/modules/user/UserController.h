@@ -40,6 +40,9 @@ public:
                       "filters::AuthFilter", "filters::PermissionFilter");
         ADD_METHOD_TO(UserController::setRoles, "/api/users/{id:\\d+}/roles", drogon::Put,
                       "filters::AuthFilter", "filters::PermissionFilter");
+        ADD_METHOD_TO(UserController::revokeUserSessions,
+                      "/api/users/{id:\\d+}/revoke-sessions", drogon::Post,
+                      "filters::AuthFilter", "filters::PermissionFilter");
 
         // 健康检查（公开，不查 DB，仍为同步）
         ADD_METHOD_TO(UserController::health, "/api/health", drogon::Get);
@@ -91,6 +94,11 @@ public:
     drogon::AsyncTask setRoles(drogon::HttpRequestPtr req,
                                std::function<void(const drogon::HttpResponsePtr&)> cb,
                                int64_t id);
+
+    drogon::AsyncTask revokeUserSessions(
+        drogon::HttpRequestPtr req,
+        std::function<void(const drogon::HttpResponsePtr&)> cb,
+        int64_t id);
 
     // 不涉及 DB，保持同步签名
     void health(const drogon::HttpRequestPtr& req,

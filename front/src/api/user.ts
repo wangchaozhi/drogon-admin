@@ -42,6 +42,8 @@ export const userApi = {
     http.get<UserRoleIds>(`/api/users/${id}/roles`).then((r) => ({ ...r, data: r.data.role_ids })),
   setRoles: (id: number, role_ids: number[]) =>
     http.put(`/api/users/${id}/roles`, { role_ids }),
+  revokeSessions: (id: number) =>
+    http.post(`/api/users/${id}/revoke-sessions`),
   changePassword: (req: ChangePasswordReq) =>
     http.put('/api/users/me/password', req),
 }

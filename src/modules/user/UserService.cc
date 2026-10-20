@@ -4,6 +4,7 @@
 #include "common/TimeUtil.h"
 #include "plugins/ConfigPlugin.h"
 #include "modules/rbac/RbacService.h"
+#include "core/DomainError.h"
 #include "core/Logger.h"
 #include <drogon/drogon.h>
 #include <algorithm>
@@ -163,7 +164,7 @@ drogon::Task<> UserService::changePassword(
 
 drogon::Task<> UserService::revokeSessions(int64_t id) {
     if (!co_await repo_.revokeTokens(id))
-        throw std::runtime_error("user not found while revoking sessions");
+        throw core::NotFoundError("user not found");
     rbac::RbacService::instance().invalidateUser(id);
     APP_LOG_INFO << "sessions revoked uid=" << id;
     co_return;
